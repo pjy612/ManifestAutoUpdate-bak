@@ -300,11 +300,12 @@ class ManifestAutoUpdate:
                         result_list.append(job)
                         gevent.idle()
             with lock:
-                if flag:
-                    self.user_info[username]['update'] = int(time.time())
                 if int(app_id) in self.app_lock and not self.app_lock[int(app_id)]:
                     self.log.debug(f'unlock app: {app_id}')
                     self.app_lock.pop(int(app_id))
+        with lock:
+            if flag:
+                self.user_info[username]['update'] = int(time.time())
         gevent.joinall(result_list)
 
     def run(self):
