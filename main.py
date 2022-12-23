@@ -10,7 +10,7 @@ from pathlib import Path
 from steam.enums import EResult
 from multiprocessing.pool import ThreadPool
 from multiprocessing.dummy import Pool, Lock
-from DepotManifestGen.main import MySteamClient, MyCDNClient, get_manifest
+from DepotManifestGen.main import MySteamClient, MyCDNClient, get_manifest, BillingType
 
 lock = Lock()
 parser = argparse.ArgumentParser()
@@ -258,7 +258,7 @@ class ManifestAutoUpdate:
                 return
             if cdn.packages_info:
                 for package_id, info in product_info['packages'].items():
-                    if 'depotids' in info and info['depotids'] and info['billingtype'] == 10:
+                    if 'depotids' in info and info['depotids'] and info['billingtype'] in BillingType.PaidList:
                         app_id_list.extend(list(info['appids'].values()))
         if not app_id_list:
             self.user_info[username]['enable'] = False
