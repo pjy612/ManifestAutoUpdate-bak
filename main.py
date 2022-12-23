@@ -74,7 +74,7 @@ class ManifestAutoUpdate:
             level = logging.INFO
         logging.basicConfig(format='%(asctime)s - %(pathname)s[line:%(lineno)d] - %(levelname)s: %(message)s',
                             level=level)
-        self.pool_num = int(pool_num) if pool_num.isdecimal() else 8
+        self.pool_num = pool_num
         self.credential_location = credential_location
         if not self.check_app_repo_local('app'):
             self.repo.git.fetch('origin', 'app:app')
@@ -90,8 +90,7 @@ class ManifestAutoUpdate:
                 self.set_depot_info(depot_id, manifest_gid)
                 app_repo = git.Repo(app_path)
                 with lock:
-                    app_repo.index.add(f'{depot_id}_{manifest_gid}.manifest')
-                    app_repo.index.add('config.vdf')
+                    app_repo.git.add('-A')
                     app_repo.index.commit(f'Update depot: {depot_id}_{manifest_gid}')
                     app_repo.create_tag(f'{depot_id}_{manifest_gid}')
             elif app_path.exists():
@@ -335,4 +334,5 @@ class ManifestAutoUpdate:
 
 if __name__ == '__main__':
     args = parser.parse_args()
-    ManifestAutoUpdate(args.credential_location, level=args.level, pool_num=args.pool_num).run()
+    ManifestAutoUpdate(args.credential_location, level=args.level,
+                       pool_num=int(args.pool_num) if args.pool_num.isdecimal() else 8).run()
