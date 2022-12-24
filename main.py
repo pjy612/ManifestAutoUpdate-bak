@@ -247,6 +247,7 @@ class ManifestAutoUpdate:
                             EResult.AccountLoginDeniedNeedTwoFactor, EResult.PasswordUnset):
                 logging.warning(f'User {username} has been disabled!')
                 self.user_info[username]['enable'] = False
+                self.user_info[username]['status'] = result
             return
         self.log.info(f'User {username} login successfully!')
         cdn = self.retry(MyCDNClient, steam, retry_num=self.retry_num)
