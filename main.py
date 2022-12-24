@@ -17,6 +17,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-c', '--credential-location', default=None)
 parser.add_argument('-l', '--level', default='INFO')
 parser.add_argument('-p', '--pool-num', default=8)
+parser.add_argument('-r', '--retry-num', default=3)
 
 
 class MyJson(dict):
@@ -62,19 +63,21 @@ class ManifestAutoUpdate:
     app_info = MyJson(app_info_path)
     repo = git.Repo()
     app_lock = {}
-    retry_num = 5
+    pool_num = 8
+    retry_num = 3
     remote_head = {}
     update_wait_time = 86400
     tags = set()
 
-    def __init__(self, credential_location=None, level=None, pool_num=8):
+    def __init__(self, credential_location=None, level=None, pool_num=None, retry_num=None):
         if level:
             level = logging.getLevelName(level.upper())
         else:
             level = logging.INFO
         logging.basicConfig(format='%(asctime)s - %(pathname)s[line:%(lineno)d] - %(levelname)s: %(message)s',
                             level=level)
-        self.pool_num = pool_num
+        self.pool_num = pool_num or self.pool_num
+        self.retry_num = retry_num or self.retry_num
         self.credential_location = credential_location
         if not self.check_app_repo_local('app'):
             self.repo.git.fetch('origin', 'app:app')
@@ -293,7 +296,7 @@ class ManifestAutoUpdate:
                         flag = False
                         job = gevent.Greenlet(
                             LogExceptions(lambda *args: (self.init_app_repo(args[1]), get_manifest(*args))[1]), cdn,
-                            app_id, depot_id, manifest_gid, True, self.ROOT, 1)
+                            app_id, depot_id, manifest_gid, True, self.ROOT, self.retry_num)
                         job.rawlink(
                             functools.partial(self.get_manifest_callback, username, app_id, depot_id, manifest_gid))
                         job.start()
@@ -336,4 +339,5 @@ class ManifestAutoUpdate:
 if __name__ == '__main__':
     args = parser.parse_args()
     ManifestAutoUpdate(args.credential_location, level=args.level,
-                       pool_num=int(args.pool_num) if args.pool_num.isdecimal() else 8).run()
+                       pool_num=int(args.pool_num) if args.pool_num.isdecimal() else None,
+                       retry_num=int(args.retry_num) if args.retry_num.isdecimal() else None).run()
