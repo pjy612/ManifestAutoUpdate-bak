@@ -266,6 +266,7 @@ class ManifestAutoUpdate:
                         app_id_list.extend(list(info['appids'].values()))
         if not app_id_list:
             self.user_info[username]['enable'] = False
+            self.user_info[username]['status'] = result
             logging.warning(f'User {username} does not have any games and has been disabled!')
             return
         fresh_resp = self.retry(steam.get_product_info, app_id_list, retry_num=self.retry_num)
