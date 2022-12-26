@@ -234,7 +234,8 @@ class ManifestAutoUpdate:
         result = steam.relogin()
         wait = 1
         if result != EResult.OK:
-            self.log.warning(f'User {username}: Relogin failure reason: {result.__repr__()}')
+            if result != EResult.Fail:
+                self.log.warning(f'User {username}: Relogin failure reason: {result.__repr__()}')
             if result == EResult.RateLimitExceeded:
                 with lock:
                     time.sleep(wait)
@@ -301,7 +302,7 @@ class ManifestAutoUpdate:
                             if int(app_id) not in self.user_info[username]['app']:
                                 self.user_info[username]['app'].append(int(app_id))
                             if self.check_manifest_exist(depot_id, manifest_gid):
-                                self.log.warning(f'Already got the depot: {depot_id}')
+                                self.log.info(f'Already got the depot: {depot_id}')
                                 continue
                         flag = False
                         job = gevent.Greenlet(
