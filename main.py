@@ -90,10 +90,14 @@ class ManifestAutoUpdate:
         app_path = self.ROOT / f'depots/{app_id}'
         try:
             if args.value:
+                delete_list = args.value.args[3]
+                if len(delete_list) > 1:
+                    self.log.warning('Deleted multiple files?')
                 self.set_depot_info(depot_id, manifest_gid)
                 app_repo = git.Repo(app_path)
                 with lock:
-                    app_repo.git.add('-A')
+                    app_repo.git.rm(delete_list)
+                    app_repo.git.add(f'{depot_id}_{manifest_gid}.manifest')
                     app_repo.index.commit(f'Update depot: {depot_id}_{manifest_gid}')
                     app_repo.create_tag(f'{depot_id}_{manifest_gid}')
             elif app_path.exists():
