@@ -16,8 +16,9 @@ lock = Lock()
 parser = argparse.ArgumentParser()
 parser.add_argument('-c', '--credential-location', default=None)
 parser.add_argument('-l', '--level', default='INFO')
-parser.add_argument('-p', '--pool-num', default=8)
-parser.add_argument('-r', '--retry-num', default=3)
+parser.add_argument('-p', '--pool-num', type=int, default=8)
+parser.add_argument('-r', '--retry-num', type=int, default=3)
+parser.add_argument('-t', '--update-wait-time', type=int, default=86400)
 
 
 class MyJson(dict):
@@ -69,7 +70,7 @@ class ManifestAutoUpdate:
     update_wait_time = 86400
     tags = set()
 
-    def __init__(self, credential_location=None, level=None, pool_num=None, retry_num=None):
+    def __init__(self, credential_location=None, level=None, pool_num=None, retry_num=None, update_wait_time=None):
         if level:
             level = logging.getLevelName(level.upper())
         else:
@@ -78,6 +79,7 @@ class ManifestAutoUpdate:
                             level=level)
         self.pool_num = pool_num or self.pool_num
         self.retry_num = retry_num or self.retry_num
+        self.update_wait_time = update_wait_time or self.update_wait_time
         self.credential_location = credential_location
         if not self.check_app_repo_local('app'):
             self.repo.git.fetch('origin', 'app:app')
@@ -218,8 +220,9 @@ class ManifestAutoUpdate:
             if not self.user_info[username]['enable']:
                 logging.warning(f'User {username} is disabled!')
                 return
-        if time.time() - self.user_info[username]['update'] < self.update_wait_time:
-            logging.warning(f'User {username} has logged in today!')
+        t = self.user_info[username]['update'] + self.update_wait_time - time.time()
+        if t > 0:
+            logging.warning(f'User {username} interval from next update: {t}s!')
             return
         sentry_path = None
         if sentry_name:
@@ -230,7 +233,7 @@ class ManifestAutoUpdate:
         result = steam.relogin()
         wait = 1
         if result != EResult.OK:
-            self.log.error(f'User {username}: Relogin failure reason: {result.__repr__()}')
+            self.log.warning(f'User {username}: Relogin failure reason: {result.__repr__()}')
             if result == EResult.RateLimitExceeded:
                 with lock:
                     time.sleep(wait)
@@ -344,6 +347,5 @@ class ManifestAutoUpdate:
 
 if __name__ == '__main__':
     args = parser.parse_args()
-    ManifestAutoUpdate(args.credential_location, level=args.level,
-                       pool_num=int(args.pool_num) if args.pool_num.isdecimal() else None,
-                       retry_num=int(args.retry_num) if args.retry_num.isdecimal() else None).run()
+    ManifestAutoUpdate(args.credential_location, level=args.level, pool_num=args.pool_num, retry_num=args.retry_num,
+                       update_wait_time=args.update_wait_time).run()
