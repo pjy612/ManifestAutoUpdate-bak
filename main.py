@@ -252,7 +252,7 @@ class ManifestAutoUpdate:
                 wait += 1
                 count -= 1
                 continue
-            elif result in (EResult.AccountLogonDenied, EResult.InvalidPassword, EResult.AccountDisabled,
+            elif result in (EResult.AccountLogonDenied, EResult.AccountDisabled,
                             EResult.AccountLoginDeniedNeedTwoFactor, EResult.PasswordUnset):
                 logging.warning(f'User {username} has been disabled!')
                 self.user_info[username]['enable'] = False
