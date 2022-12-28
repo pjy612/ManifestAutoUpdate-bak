@@ -223,7 +223,7 @@ class ManifestAutoUpdate:
                 return
         t = self.user_info[username]['update'] + self.update_wait_time - time.time()
         if t > 0:
-            logging.warning(f'User {username} interval from next update: {t}s!')
+            logging.warning(f'User {username} interval from next update: {int(t)}s!')
             return
         sentry_path = None
         if sentry_name:
@@ -292,6 +292,8 @@ class ManifestAutoUpdate:
                 self.app_lock[int(app_id)] = set()
             app = fresh_resp['apps'][app_id]
             if 'common' in app and app['common']['type'].lower() == 'game':
+                if 'depots' not in fresh_resp['apps'][app_id]:
+                    continue
                 for depot_id, depot in fresh_resp['apps'][app_id]['depots'].items():
                     with lock:
                         self.app_lock[int(app_id)].add(depot_id)
