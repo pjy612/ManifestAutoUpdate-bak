@@ -292,7 +292,7 @@ class ManifestAutoUpdate:
                 self.log.debug(f'lock app: {app_id}')
                 self.app_lock[int(app_id)] = set()
             app = fresh_resp['apps'][app_id]
-            if 'common' in app and app['common']['type'].lower() == 'game':
+            if 'common' in app and app['common']['type'].lower() in ['game', 'dlc']:
                 if 'depots' not in fresh_resp['apps'][app_id]:
                     continue
                 for depot_id, depot in fresh_resp['apps'][app_id]['depots'].items():
