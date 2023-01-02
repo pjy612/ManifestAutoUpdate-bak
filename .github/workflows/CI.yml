@@ -51,9 +51,11 @@ jobs:
           git config --local user.name 'github-actions[bot]'
           git config --local user.email 'github-actions[bot]@users.noreply.github.com'
           choco install wget
+          cd data
           wget https://github.com/AGWA/git-crypt/releases/download/0.7.0/git-crypt-0.7.0-x86_64.exe -O git-crypt.exe
           python -c "open('KEY','wb').write(bytes.fromhex('${{ secrets.KEY }}'))"
           ./git-crypt unlock KEY
+          cd ..
           python main.py -l ${{ github.event.inputs.level || 'INFO' }} -p ${{ github.event.inputs.pool || 8 }} -r ${{ github.event.inputs.retry || 3 }} -t ${{ github.event.inputs.time || 1 }}
           python push.py
           python push.py
