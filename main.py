@@ -106,8 +106,8 @@ class ManifestAutoUpdate:
                     app_repo.create_tag(f'{depot_id}_{manifest_gid}')
             elif app_path.exists():
                 app_path.unlink(missing_ok=True)
-        except Exception as e:
-            logging.error(e)
+        except:
+            logging.error(traceback.format_exc())
         finally:
             with lock:
                 if int(app_id) in self.app_lock:
