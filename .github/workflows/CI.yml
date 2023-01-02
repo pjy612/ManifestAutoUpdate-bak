@@ -30,6 +30,8 @@ on:
         default: 86400
     branches:
       - main
+  schedule:
+    - cron: '0 */3 * * *'
 jobs:
   build:
     runs-on: windows-latest
