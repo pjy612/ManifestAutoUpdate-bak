@@ -55,13 +55,10 @@ class LogExceptions:
 
 class ManifestAutoUpdate:
     log = logging.getLogger('ManifestAutoUpdate')
-    ROOT = Path().absolute()
+    ROOT = Path('data').absolute()
     users_path = ROOT / Path('users.json')
     app_info_path = ROOT / Path('appinfo.json')
     user_info_path = ROOT / Path('userinfo.json')
-    account_info = MyJson(users_path)
-    user_info = MyJson(user_info_path)
-    app_info = MyJson(app_info_path)
     repo = git.Repo()
     app_lock = {}
     pool_num = 8
@@ -77,10 +74,14 @@ class ManifestAutoUpdate:
             level = logging.INFO
         logging.basicConfig(format='%(asctime)s - %(pathname)s[line:%(lineno)d] - %(levelname)s: %(message)s',
                             level=level)
+        self.init_data()
+        self.account_info = MyJson(self.users_path)
+        self.user_info = MyJson(self.user_info_path)
+        self.app_info = MyJson(self.app_info_path)
         self.pool_num = pool_num or self.pool_num
         self.retry_num = retry_num or self.retry_num
         self.update_wait_time = update_wait_time or self.update_wait_time
-        self.credential_location = credential_location
+        self.credential_location = credential_location or str(self.ROOT / 'client')
         if not self.check_app_repo_local('app'):
             self.repo.git.fetch('origin', 'app:app')
         self.get_remote_tags()
@@ -182,6 +183,12 @@ class ManifestAutoUpdate:
             if f'{depot_id}_{manifest_gid}' == tag:
                 return True
         return False
+
+    def init_data(self):
+        if 'data' not in self.get_app_worktree():
+            if not self.check_app_repo_local('data'):
+                self.repo.git.fetch('origin', f'data:origin_data')
+            self.repo.git.worktree('add', '-b', 'data', 'data', 'origin_data')
 
     def init_app_repo(self, app_id):
         app_path = self.ROOT / f'depots/{app_id}'
