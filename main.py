@@ -192,12 +192,12 @@ class ManifestAutoUpdate:
                 with lock:
                     if not self.check_app_repo_local(app_id):
                         self.repo.git.fetch('origin', f'{app_id}:origin_{app_id}')
-                self.repo.git.worktree('add', '-b', app_id, f'depots/{app_id}', f'origin_{app_id}')
+                self.repo.git.worktree('add', '-b', app_id, app_path, f'origin_{app_id}')
             else:
                 if self.check_app_repo_local(app_id):
                     self.log.warning(f'Branch {app_id} does not exist locally and remotely!')
                     self.repo.git.branch('-d', app_id)
-                self.repo.git.worktree('add', '-b', app_id, f'depots/{app_id}', 'app')
+                self.repo.git.worktree('add', '-b', app_id, app_path, 'app')
 
     def retry(self, fun, *args, retry_num=-1, **kwargs):
         while retry_num:
