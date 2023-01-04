@@ -67,7 +67,10 @@ def depotkey_merge(config_path, depots_config):
         return
     with open(config_path) as f:
         config = vdf.load(f)
-    config['InstallConfigStore']['Software']['Valve']['Steam']['depots'].update(depots_config['depots'])
+    software = config['InstallConfigStore']['Software']
+    valve = software.get('Valve') or software.get('valve')
+    steam = valve.get('Steam') or valve.get('steam')
+    steam['depots'].update(depots_config['depots'])
     with open(config_path, 'w') as f:
         vdf.dump(config, f, pretty=True)
     return True
