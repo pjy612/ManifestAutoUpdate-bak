@@ -1,6 +1,7 @@
 import os
 import git
 import time
+import traceback
 from multiprocessing.pool import ThreadPool
 from multiprocessing.dummy import Pool, Lock
 
@@ -60,7 +61,29 @@ def push(repo=git.Repo()):
                 pool.terminate()
     print(f'Pushed {total_branch} branch!')
     print(f'Pushed {total_tag} tag!')
+    if not all([result.successful() for result in result_list]):
+        return push(repo=repo)
+
+
+def push_data(repo=None):
+    if not repo:
+        repo = git.Repo('data')
+    print('Pushing to the data branch!')
+    try:
+        repo.git.add('client/ssfn*')
+    except git.exc.GitCommandError:
+        pass
+    try:
+        repo.git.add('appinfo.json', 'userinfo.json', 'users.json')
+        repo.git.commit('-m', 'update')
+    except git.exc.GitCommandError:
+        pass
+    try:
+        repo.git.push('origin', 'data')
+    except git.exc.GitCommandError:
+        traceback.print_exc()
 
 
 if __name__ == '__main__':
     push()
+    push_data()

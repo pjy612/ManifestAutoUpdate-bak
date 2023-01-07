@@ -4,10 +4,14 @@ import time
 import gevent
 import logging
 import argparse
+import platform
+import requests
 import functools
 import traceback
+import subprocess
 from pathlib import Path
 from steam.enums import EResult
+from push import push, push_data
 from multiprocessing.pool import ThreadPool
 from multiprocessing.dummy import Pool, Lock
 from DepotManifestGen.main import MySteamClient, MyCDNClient, get_manifest, BillingType
@@ -19,6 +23,7 @@ parser.add_argument('-l', '--level', default='INFO')
 parser.add_argument('-p', '--pool-num', type=int, default=8)
 parser.add_argument('-r', '--retry-num', type=int, default=3)
 parser.add_argument('-t', '--update-wait-time', type=int, default=86400)
+parser.add_argument('-k', '--key', default=None)
 
 
 class MyJson(dict):
@@ -30,6 +35,7 @@ class MyJson(dict):
 
     def load(self):
         if not self.path.exists():
+            self.dump()
             return
         with self.path.open() as f:
             self.update(json.load(f))
@@ -59,9 +65,8 @@ class ManifestAutoUpdate:
     users_path = ROOT / Path('users.json')
     app_info_path = ROOT / Path('appinfo.json')
     user_info_path = ROOT / Path('userinfo.json')
-    account_info = MyJson(users_path)
-    user_info = MyJson(user_info_path)
-    app_info = MyJson(app_info_path)
+    key_path = ROOT / 'KEY'
+    git_crypt_path = ROOT / ('git-crypt' + ('.exe' if platform.system().lower() == 'windows' else ''))
     repo = git.Repo()
     app_lock = {}
     pool_num = 8
@@ -70,7 +75,8 @@ class ManifestAutoUpdate:
     update_wait_time = 86400
     tags = set()
 
-    def __init__(self, credential_location=None, level=None, pool_num=None, retry_num=None, update_wait_time=None):
+    def __init__(self, credential_location=None, level=None, pool_num=None, retry_num=None, update_wait_time=None,
+                 key=None):
         if level:
             level = logging.getLevelName(level.upper())
         else:
@@ -80,10 +86,81 @@ class ManifestAutoUpdate:
         self.pool_num = pool_num or self.pool_num
         self.retry_num = retry_num or self.retry_num
         self.update_wait_time = update_wait_time or self.update_wait_time
-        self.credential_location = credential_location or str(self.ROOT / 'client')
+        self.credential_location = Path(credential_location or self.ROOT / 'client')
+        self.key = key
+        self.app_sha = None
         if not self.check_app_repo_local('app'):
-            self.repo.git.fetch('origin', 'app:app')
+            if self.check_app_repo_remote('app'):
+                self.log.info('Pulling remote app branch!')
+                self.repo.git.fetch('origin', 'app:app')
+            else:
+                try:
+                    self.log.info('Getting the full branch!')
+                    self.repo.git.fetch('--unshallow')
+                except git.exc.GitCommandError as e:
+                    self.log.debug(f'Getting the full branch failed: {e}')
+                self.app_sha = self.repo.git.rev_list('--max-parents=0', 'HEAD').strip()
+                self.log.debug(f'app_sha: {self.app_sha}')
+                self.repo.git.branch('app', self.app_sha)
+        if not self.app_sha:
+            self.app_sha = self.repo.git.rev_list('--max-parents=0', 'app').strip()
+            self.log.debug(f'app_sha: {self.app_sha}')
+        if not self.check_app_repo_local('data'):
+            if self.check_app_repo_remote('data'):
+                self.log.info('Pulling remote data branch!')
+                self.repo.git.fetch('origin', 'data:origin_data')
+                self.repo.git.worktree('add', '-b', 'data', 'data', 'origin_data')
+            else:
+                self.repo.git.worktree('add', '-b', 'data', 'data', 'app')
+        data_repo = git.Repo('data')
+        if data_repo.head.commit.hexsha == self.app_sha:
+            self.log.info('Initialize the data branch!')
+            self.download_git_crypt()
+            self.log.info('Key being generated!')
+            subprocess.run([self.git_crypt_path, 'init'], cwd='data')
+            subprocess.run([self.git_crypt_path, 'export-key', self.key_path], cwd='data')
+            self.log.info(f'Your key path: {self.key_path}')
+            with self.key_path.open('rb') as f:
+                self.key = f.read().hex()
+            self.log.info(f'Your key hex: {self.key}')
+            self.log.info(
+                f'Please save this key to Repository secrets\nIt\'s located in Project -> Settings -> Secrets -> Actions -> Repository secrets')
+            with (self.ROOT / '.gitattributes').open('w') as f:
+                f.write('users.json filter=git-crypt diff=git-crypt')
+            data_repo.git.add('.gitattributes')
+        if self.key and self.users_path.exists() and self.users_path.stat().st_size > 0:
+            with Path(self.ROOT / 'users.json').open('rb') as f:
+                content = f.read(10)
+            if content == b'\x00GITCRYPT\x00':
+                self.download_git_crypt()
+                with self.key_path.open('wb') as f:
+                    f.write(bytes.fromhex(self.key))
+                subprocess.run([self.git_crypt_path, 'unlock', self.key_path], cwd='data')
+                self.log.info('git crypt unlock successfully!')
+        if not self.credential_location.exists():
+            self.credential_location.mkdir(exist_ok=True)
+        self.account_info = MyJson(self.users_path)
+        self.user_info = MyJson(self.user_info_path)
+        self.app_info = MyJson(self.app_info_path)
         self.get_remote_tags()
+
+    def download_git_crypt(self):
+        if self.git_crypt_path.exists():
+            return
+        self.log.info('Waiting to download git-crypt!')
+        url = 'https://github.com/AGWA/git-crypt/releases/download/0.7.0/'
+        url_win = 'git-crypt-0.7.0-x86_64.exe'
+        url_linux = 'git-crypt-0.7.0-linux-x86_64'
+        url = url + (url_win if platform.system().lower() == 'windows' else url_linux)
+        try:
+            r = requests.get(url)
+            with self.git_crypt_path.open('wb') as f:
+                f.write(r.content)
+            if platform.system().lower() != 'windows':
+                subprocess.run(['chmod', '+x', self.git_crypt_path])
+        except requests.exceptions.ConnectionError:
+            traceback.print_exc()
+            exit()
 
     def get_manifest_callback(self, username, app_id, depot_id, manifest_gid, args):
         if not args.value:
@@ -127,11 +204,8 @@ class ManifestAutoUpdate:
             self.user_info.dump()
 
     def save(self):
-        self.save_depot()
-        self.save_user_info()
-
-    def save_depot(self):
         self.save_depot_info()
+        self.save_user_info()
 
     def save_depot_info(self):
         with lock:
@@ -160,18 +234,18 @@ class ManifestAutoUpdate:
         self.remote_head = head_dict
         return head_dict
 
-    def check_app_repo_remote(self, app_id):
-        return str(app_id) in self.get_remote_head()
+    def check_app_repo_remote(self, repo):
+        return str(repo) in self.get_remote_head()
 
-    def check_app_repo_local(self, app_id):
+    def check_app_repo_local(self, repo):
         for branch in self.repo.heads:
-            if branch.name == str(app_id):
+            if branch.name == str(repo):
                 return True
         return False
 
     def get_remote_tags(self):
         if not self.tags:
-            for i in self.repo.git.ls_remote('--tags').split('\n'):
+            for i in filter(None, self.repo.git.ls_remote('--tags').split('\n')):
                 sha, tag = i.split()
                 tag = tag.split('/')[-1]
                 self.tags.add(tag)
@@ -230,7 +304,7 @@ class ManifestAutoUpdate:
         if sentry_name:
             sentry_path = Path(
                 self.credential_location if self.credential_location else MySteamClient.credential_location) / sentry_name
-        steam = MySteamClient(self.credential_location, sentry_path)
+        steam = MySteamClient(str(self.credential_location), sentry_path)
         steam.username = username
         result = steam.relogin()
         wait = 1
@@ -327,6 +401,8 @@ class ManifestAutoUpdate:
 
     def run(self):
         if not self.account_info:
+            self.save()
+            self.account_info.dump()
             return
         with Pool(self.pool_num) as pool:
             pool: ThreadPool
@@ -353,4 +429,6 @@ class ManifestAutoUpdate:
 if __name__ == '__main__':
     args = parser.parse_args()
     ManifestAutoUpdate(args.credential_location, level=args.level, pool_num=args.pool_num, retry_num=args.retry_num,
-                       update_wait_time=args.update_wait_time).run()
+                       update_wait_time=args.update_wait_time, key=args.key).run()
+    push()
+    push_data()
