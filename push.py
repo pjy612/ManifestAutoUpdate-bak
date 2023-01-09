@@ -1,7 +1,7 @@
-import os
 import git
 import time
 import traceback
+import subprocess
 from multiprocessing.pool import ThreadPool
 from multiprocessing.dummy import Pool, Lock
 
@@ -39,7 +39,8 @@ def push(repo=git.Repo()):
                     total_branch += 1
                     with lock:
                         print(local_head.name, local_head.commit.hexsha)
-                    result_list.append(pool.map_async(os.system, ('git push origin ' + local_head.name,)))
+                    result_list.append(
+                        pool.map_async(subprocess.check_call, (['git', 'push', 'origin', local_head.name],)))
         for local_tag in repo.tags:
             for remote_sha, remote_tag in remote_tag_list:
                 if remote_tag == local_tag.name:
@@ -48,7 +49,7 @@ def push(repo=git.Repo()):
                 total_tag += 1
                 with lock:
                     print(local_tag.name, local_tag.commit.hexsha)
-                result_list.append(pool.map_async(os.system, ('git push origin ' + local_tag.name,)))
+                result_list.append(pool.map_async(subprocess.check_call, (['git', 'push', 'origin', local_tag.name],)))
         try:
             while pool._state == 'RUN':
                 if all([result.ready() for result in result_list]):
