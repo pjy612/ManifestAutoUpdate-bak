@@ -45,7 +45,7 @@
       schedule:
           - cron: '0 */3 * * *'
       ```
-    * `actions`每三小时运行一次
+    * `Actions`每三小时运行一次
 2. 开启多线程同时登录多个账号爬取清单,直到所有账号都被爬取完毕
     * 判断账号是否禁用
     * 判断账号距离上次爬取时间是否大于可爬取间隔
@@ -82,10 +82,16 @@
             * 打开你的仓库 -> `Settings` -> `Secrets` -> `Actions` -> `New repository secret`
             * 或者在你的仓库地址后面加上`/settings/secrets/actions/new`
     * 增加账号密码到`data/users.json`:
-        * 之后如果需要使用`actions`需要将其推送到远程仓库
+        * 之后如果需要使用`Actions`需要将其推送到远程仓库
             * 再次运行程序,程序结束时会自动推送到`data`分支
             * 手动推送步骤如下:
                 1. `cd data`: 切换到`data`目录
                 2. `git add -u`: 增加修改的内容
                 3. `git commit -m "update"`: 提交修改
                 4. `git push origin data`: 推送到远程`data`分支
+
+## 如何pr清单
+* 本项目使用`Actions`定期检查并合并清单，是否合并成功请在`Actions`运行完后查看对应分支
+1. 完成部署本项目并爬取清单
+2. 打开你要`pr`清单的分支，点击`Compare & pull request`
+3. 点击`Create pull request`创建`pr`

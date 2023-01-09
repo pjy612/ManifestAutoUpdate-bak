@@ -24,6 +24,7 @@ parser.add_argument('-p', '--pool-num', type=int, default=8)
 parser.add_argument('-r', '--retry-num', type=int, default=3)
 parser.add_argument('-t', '--update-wait-time', type=int, default=86400)
 parser.add_argument('-k', '--key', default=None)
+parser.add_argument('-i', '--init-only', action='store_true', default=False)
 
 
 class MyJson(dict):
@@ -76,13 +77,14 @@ class ManifestAutoUpdate:
     tags = set()
 
     def __init__(self, credential_location=None, level=None, pool_num=None, retry_num=None, update_wait_time=None,
-                 key=None):
+                 key=None, init_only=False):
         if level:
             level = logging.getLevelName(level.upper())
         else:
             level = logging.INFO
         logging.basicConfig(format='%(asctime)s - %(pathname)s[line:%(lineno)d] - %(levelname)s: %(message)s',
                             level=level)
+        self.init_only = init_only
         self.pool_num = pool_num or self.pool_num
         self.retry_num = retry_num or self.retry_num
         self.update_wait_time = update_wait_time or self.update_wait_time
@@ -400,7 +402,7 @@ class ManifestAutoUpdate:
         gevent.joinall(result_list)
 
     def run(self):
-        if not self.account_info:
+        if not self.account_info or self.init_only:
             self.save()
             self.account_info.dump()
             return
@@ -429,6 +431,7 @@ class ManifestAutoUpdate:
 if __name__ == '__main__':
     args = parser.parse_args()
     ManifestAutoUpdate(args.credential_location, level=args.level, pool_num=args.pool_num, retry_num=args.retry_num,
-                       update_wait_time=args.update_wait_time, key=args.key).run()
-    push()
+                       update_wait_time=args.update_wait_time, key=args.key, init_only=args.init_only).run()
+    if not args.init_only:
+        push()
     push_data()
