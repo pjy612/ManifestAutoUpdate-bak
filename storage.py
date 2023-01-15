@@ -23,7 +23,7 @@ def get(sha, path):
                 if r.status_code == 200:
                     return r.content
             except requests.exceptions.ConnectionError:
-                print(f'获取清单失败: {path}')
+                print(f'获取失败: {path}')
                 retry -= 1
                 if not retry:
                     print(f'超过最大重试次数: {path}')
@@ -33,7 +33,11 @@ def get(sha, path):
 def get_manifest(sha, path, steam_path: Path):
     try:
         if path.endswith('.manifest'):
-            save_path = steam_path / 'depotcache' / path
+            depot_cache_path = steam_path / 'depotcache'
+            with lock:
+                if not depot_cache_path.exists():
+                    depot_cache_path.mkdir(exist_ok=True)
+            save_path = depot_cache_path / path
             if save_path.exists():
                 with lock:
                     print(f'已存在清单: {path}')
@@ -48,9 +52,10 @@ def get_manifest(sha, path, steam_path: Path):
             with lock:
                 print(f'密钥下载成功: {path}')
             depots_config = vdf.loads(content.decode())
-            if depotkey_merge(steam_path / 'config' / path, depots_config):
-                print('合并config.vdf成功')
-            if stool_add([depot_id for depot_id in depots_config['depots']]):
+            # if depotkey_merge(steam_path / 'config' / path, depots_config):
+            #     print('合并config.vdf成功')
+            if stool_add([(depot_id, depots_config['depots'][depot_id]['DecryptionKey']) for depot_id in
+                          depots_config['depots']]):
                 print('导入steamtools成功')
     except KeyboardInterrupt:
         raise
@@ -70,18 +75,23 @@ def depotkey_merge(config_path, depots_config):
     software = config['InstallConfigStore']['Software']
     valve = software.get('Valve') or software.get('valve')
     steam = valve.get('Steam') or valve.get('steam')
+    if 'depots' not in steam:
+        steam['depots'] = {}
     steam['depots'].update(depots_config['depots'])
     with open(config_path, 'w') as f:
         vdf.dump(config, f, pretty=True)
     return True
 
 
-def stool_add(depot_id_list):
+def stool_add(depot_list):
     info_path = Path('~/AppData/Roaming/Stool/info.pak').expanduser()
     conn = sqlite3.connect(info_path)
     c = conn.cursor()
-    for depot_id in depot_id_list:
-        c.execute(f'insert or replace into Appinfo (appid,type) values ({depot_id},1)')
+    for depot_id, depot_key in depot_list:
+        if depot_key:
+            c.execute(f'insert or replace into Appinfo (appid,type,DecryptionKey) values ({depot_id},1,"{depot_key}")')
+        else:
+            c.execute(f'insert or replace into Appinfo (appid,type) values ({depot_id},1)')
     conn.commit()
     return True
 
@@ -100,7 +110,7 @@ def main(app_id):
         url = r.json()['commit']['commit']['tree']['url']
         r = requests.get(url)
         if 'tree' in r.json():
-            stool_add([app_id])
+            stool_add([(app_id, None)])
             result_list = []
             with Pool(32) as pool:
                 pool: ThreadPool
