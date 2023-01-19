@@ -51,9 +51,9 @@ def get_manifest(sha, path, steam_path: Path):
             content = get(sha, path)
             with lock:
                 print(f'密钥下载成功: {path}')
-            depots_config = vdf.loads(content.decode())
-            # if depotkey_merge(steam_path / 'config' / path, depots_config):
-            #     print('合并config.vdf成功')
+            depots_config = vdf.loads(content.decode(encoding='utf-8'))
+            if depotkey_merge(steam_path / 'config' / path, depots_config):
+                print('合并config.vdf成功')
             if stool_add([(depot_id, depots_config['depots'][depot_id]['DecryptionKey']) for depot_id in
                           depots_config['depots']]):
                 print('导入steamtools成功')
@@ -78,7 +78,7 @@ def depotkey_merge(config_path, depots_config):
     if 'depots' not in steam:
         steam['depots'] = {}
     steam['depots'].update(depots_config['depots'])
-    with open(config_path, 'w') as f:
+    with open(config_path, 'w', encoding='utf-8') as f:
         vdf.dump(config, f, pretty=True)
     return True
 
