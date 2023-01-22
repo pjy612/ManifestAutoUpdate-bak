@@ -14,7 +14,7 @@ from steam.enums import EResult
 from push import push, push_data
 from multiprocessing.pool import ThreadPool
 from multiprocessing.dummy import Pool, Lock
-from DepotManifestGen.main import MySteamClient, MyCDNClient, get_manifest, BillingType
+from DepotManifestGen.main import MySteamClient, MyCDNClient, get_manifest, BillingType, Result
 
 lock = Lock()
 parser = argparse.ArgumentParser()
@@ -25,6 +25,8 @@ parser.add_argument('-r', '--retry-num', type=int, default=3)
 parser.add_argument('-t', '--update-wait-time', type=int, default=86400)
 parser.add_argument('-k', '--key', default=None)
 parser.add_argument('-i', '--init-only', action='store_true', default=False)
+parser.add_argument('-C', '--cli', action='store_true', default=False)
+parser.add_argument('-P', '--no-push', action='store_true', default=False)
 
 
 class MyJson(dict):
@@ -77,18 +79,21 @@ class ManifestAutoUpdate:
     tags = set()
 
     def __init__(self, credential_location=None, level=None, pool_num=None, retry_num=None, update_wait_time=None,
-                 key=None, init_only=False):
+                 key=None, init_only=False, cli=False):
         if level:
             level = logging.getLevelName(level.upper())
         else:
             level = logging.INFO
         logging.basicConfig(format='%(asctime)s - %(pathname)s[line:%(lineno)d] - %(levelname)s: %(message)s',
                             level=level)
+        logging.getLogger('MySteamClient').setLevel(logging.WARNING)
         self.init_only = init_only
+        self.cli = cli
         self.pool_num = pool_num or self.pool_num
         self.retry_num = retry_num or self.retry_num
         self.update_wait_time = update_wait_time or self.update_wait_time
         self.credential_location = Path(credential_location or self.ROOT / 'client')
+        self.log.debug(f'credential_location: {credential_location}')
         self.key = key
         self.app_sha = None
         if not self.check_app_repo_local('app'):
@@ -144,6 +149,7 @@ class ManifestAutoUpdate:
         self.account_info = MyJson(self.users_path)
         self.user_info = MyJson(self.user_info_path)
         self.app_info = MyJson(self.app_info_path)
+        self.log.info('Waiting to get remote tags!')
         self.get_remote_tags()
 
     def download_git_crypt(self):
@@ -165,26 +171,30 @@ class ManifestAutoUpdate:
             exit()
 
     def get_manifest_callback(self, username, app_id, depot_id, manifest_gid, args):
-        if not args.value:
-            self.log.error(f'User {username}: get_manifest return {args.value.code.__repr__()}')
+        result = args.value
+        if not result:
+            self.log.error(f'User {username}: get_manifest return {result.code.__repr__()}')
             return
         app_path = self.ROOT / f'depots/{app_id}'
         try:
-            if args.value:
-                delete_list = args.value.args[3]
-                if len(delete_list) > 1:
-                    self.log.warning('Deleted multiple files?')
-                self.set_depot_info(depot_id, manifest_gid)
-                app_repo = git.Repo(app_path)
-                with lock:
+            delete_list = result.get('delete_list') or []
+            manifest_commit = result.get('manifest_commit')
+            if len(delete_list) > 1:
+                self.log.warning('Deleted multiple files?')
+            self.set_depot_info(depot_id, manifest_gid)
+            app_repo = git.Repo(app_path)
+            with lock:
+                if manifest_commit:
+                    app_repo.create_tag(f'{depot_id}_{manifest_gid}', manifest_commit)
+                else:
                     if delete_list:
                         app_repo.git.rm(delete_list)
                     app_repo.git.add(f'{depot_id}_{manifest_gid}.manifest')
                     app_repo.git.add('config.vdf')
                     app_repo.index.commit(f'Update depot: {depot_id}_{manifest_gid}')
                     app_repo.create_tag(f'{depot_id}_{manifest_gid}')
-            elif app_path.exists():
-                app_path.unlink(missing_ok=True)
+        except KeyboardInterrupt:
+            raise
         except:
             logging.error(traceback.format_exc())
         finally:
@@ -194,7 +204,7 @@ class ManifestAutoUpdate:
                     if int(app_id) not in self.user_info[username]['app']:
                         self.user_info[username]['app'].append(int(app_id))
                     if not self.app_lock[int(app_id)]:
-                        self.log.debug(f'unlock app: {app_id}')
+                        self.log.debug(f'Unlock app: {app_id}')
                         self.app_lock.pop(int(app_id))
 
     def set_depot_info(self, depot_id, manifest_gid):
@@ -286,6 +296,63 @@ class ManifestAutoUpdate:
                 self.log.error(e)
                 return
 
+    def login(self, steam, username, password):
+        self.log.info(f'Logging in to account {username}!')
+        steam.username = username
+        result = steam.relogin()
+        wait = 1
+        if result != EResult.OK:
+            if result != EResult.Fail:
+                self.log.warning(f'User {username}: Relogin failure reason: {result.__repr__()}')
+            if result == EResult.RateLimitExceeded:
+                with lock:
+                    time.sleep(wait)
+            result = steam.login(username, password, steam.login_key)
+        count = self.retry_num
+        while result != EResult.OK and count:
+            if self.cli:
+                with lock:
+                    self.log.warning(f'Using the command line to interactively log in to account {username}!')
+                    result = steam.cli_login(username, password)
+                break
+            elif result == EResult.RateLimitExceeded:
+                if not count:
+                    break
+                with lock:
+                    time.sleep(wait)
+                result = steam.login(username, password, steam.login_key)
+            elif result in (EResult.AccountLogonDenied, EResult.AccountDisabled,
+                            EResult.AccountLoginDeniedNeedTwoFactor, EResult.PasswordUnset):
+                logging.warning(f'User {username} has been disabled!')
+                self.user_info[username]['enable'] = False
+                self.user_info[username]['status'] = result
+                break
+            wait += 1
+            count -= 1
+            self.log.error(f'User {username}: Login failure reason: {result.__repr__()}')
+        if result == EResult.OK:
+            self.log.info(f'User {username} login successfully!')
+        else:
+            self.log.error(f'User {username}: Login failure reason: {result.__repr__()}')
+        return result
+
+    def async_task(self, cdn, app_id, depot_id, manifest_gid):
+        self.init_app_repo(app_id)
+        manifest_path = self.ROOT / f'depots/{app_id}/{depot_id}_{manifest_gid}.manifest'
+        if manifest_path.exists():
+            self.log.debug(f'manifest_path exists: {manifest_path}')
+            app_repo = git.Repo(self.ROOT / f'depots/{app_id}')
+            try:
+                manifest_commit = app_repo.git.rev_list('-1', str(app_id),
+                                                        f'{depot_id}_{manifest_gid}.manifest').strip()
+            except git.exc.GitCommandError:
+                manifest_path.unlink(missing_ok=True)
+            else:
+                self.log.debug(f'manifest_commit: {manifest_commit}')
+                return Result(result=True, app_id=app_id, depot_id=depot_id, manifest_gid=manifest_gid,
+                              manifest_commit=manifest_commit)
+        return get_manifest(cdn, app_id, depot_id, manifest_gid, True, self.ROOT, self.retry_num)
+
     def get_manifest(self, username, password, sentry_name=None):
         with lock:
             if username not in self.user_info:
@@ -306,66 +373,46 @@ class ManifestAutoUpdate:
         if sentry_name:
             sentry_path = Path(
                 self.credential_location if self.credential_location else MySteamClient.credential_location) / sentry_name
+        self.log.debug(f'User {username} sentry_path: {sentry_path}')
         steam = MySteamClient(str(self.credential_location), sentry_path)
-        steam.username = username
-        result = steam.relogin()
-        wait = 1
+        result = self.login(steam, username, password)
         if result != EResult.OK:
-            if result != EResult.Fail:
-                self.log.warning(f'User {username}: Relogin failure reason: {result.__repr__()}')
-            if result == EResult.RateLimitExceeded:
-                with lock:
-                    time.sleep(wait)
-            result = steam.login(username, password, steam.login_key)
-        count = self.retry_num
-        while result != EResult.OK:
-            self.log.error(f'User {username}: Login failure reason: {result.__repr__()}')
-            if result == EResult.RateLimitExceeded:
-                if not count:
-                    return
-                with lock:
-                    time.sleep(wait)
-                result = steam.login(username, password, steam.login_key)
-                wait += 1
-                count -= 1
-                continue
-            elif result in (EResult.AccountLogonDenied, EResult.AccountDisabled,
-                            EResult.AccountLoginDeniedNeedTwoFactor, EResult.PasswordUnset):
-                logging.warning(f'User {username} has been disabled!')
-                self.user_info[username]['enable'] = False
-                self.user_info[username]['status'] = result
             return
-        self.log.info(f'User {username} login successfully!')
+        self.log.info(f'User {username}: Waiting to initialize the cdn client!')
         cdn = self.retry(MyCDNClient, steam, retry_num=self.retry_num)
         if not cdn:
             logging.error(f'User {username}: Failed to initialize cdn!')
             return
         app_id_list = []
         if cdn.packages_info:
+            self.log.info(f'User {username}: Waiting to get app info!')
             product_info = self.retry(steam.get_product_info, packages=cdn.packages_info, retry_num=self.retry_num)
             if not product_info:
-                logging.error(f'User {username}: Failed to get package info!')
+                logging.error(f'User {username}: Failed to get app info!')
                 return
             if cdn.packages_info:
                 for package_id, info in product_info['packages'].items():
                     if 'depotids' in info and info['depotids'] and info['billingtype'] in BillingType.PaidList:
                         app_id_list.extend(list(info['appids'].values()))
+        self.log.info(f'User {username}: {len(app_id_list)} paid app found!')
         if not app_id_list:
             self.user_info[username]['enable'] = False
             self.user_info[username]['status'] = result
-            logging.warning(f'User {username} does not have any games and has been disabled!')
+            logging.warning(f'User {username}: Does not have any app and has been disabled!')
             return
+        self.log.debug(f'User {username}, paid app id list: ' + ','.join([str(i) for i in app_id_list]))
+        self.log.info(f'User {username}: Waiting to get app info!')
         fresh_resp = self.retry(steam.get_product_info, app_id_list, retry_num=self.retry_num)
         if not fresh_resp:
             logging.error(f'User {username}: Failed to get app info!')
             return
-        result_list = []
+        job_list = []
         flag = True
         for app_id in app_id_list:
             with lock:
                 if int(app_id) in self.app_lock:
                     continue
-                self.log.debug(f'lock app: {app_id}')
+                self.log.debug(f'Lock app: {app_id}')
                 self.app_lock[int(app_id)] = set()
             app = fresh_resp['apps'][app_id]
             if 'common' in app and app['common']['type'].lower() in ['game', 'dlc', 'application']:
@@ -381,25 +428,24 @@ class ManifestAutoUpdate:
                             if int(app_id) not in self.user_info[username]['app']:
                                 self.user_info[username]['app'].append(int(app_id))
                             if self.check_manifest_exist(depot_id, manifest_gid):
-                                self.log.info(f'Already got the depot: {depot_id}')
+                                self.log.info(f'Already got the manifest: {depot_id}_{manifest_gid}')
                                 continue
                         flag = False
-                        job = gevent.Greenlet(
-                            LogExceptions(lambda *args: (self.init_app_repo(args[1]), get_manifest(*args))[1]), cdn,
-                            app_id, depot_id, manifest_gid, True, self.ROOT, self.retry_num)
+                        job = gevent.Greenlet(LogExceptions(self.async_task), cdn, app_id, depot_id, manifest_gid)
                         job.rawlink(
                             functools.partial(self.get_manifest_callback, username, app_id, depot_id, manifest_gid))
-                        job.start()
-                        result_list.append(job)
+                        job_list.append(job)
                         gevent.idle()
+                for job in job_list:
+                    job.start()
             with lock:
                 if int(app_id) in self.app_lock and not self.app_lock[int(app_id)]:
-                    self.log.debug(f'unlock app: {app_id}')
+                    self.log.debug(f'Unlock app: {app_id}')
                     self.app_lock.pop(int(app_id))
         with lock:
             if flag:
                 self.user_info[username]['update'] = int(time.time())
-        gevent.joinall(result_list)
+        gevent.joinall(job_list)
 
     def run(self):
         if not self.account_info or self.init_only:
@@ -431,7 +477,9 @@ class ManifestAutoUpdate:
 if __name__ == '__main__':
     args = parser.parse_args()
     ManifestAutoUpdate(args.credential_location, level=args.level, pool_num=args.pool_num, retry_num=args.retry_num,
-                       update_wait_time=args.update_wait_time, key=args.key, init_only=args.init_only).run()
-    if not args.init_only:
-        push()
-    push_data()
+                       update_wait_time=args.update_wait_time, key=args.key, init_only=args.init_only,
+                       cli=args.cli).run()
+    if not args.no_push:
+        if not args.init_only:
+            push()
+        push_data()

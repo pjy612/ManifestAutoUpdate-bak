@@ -67,6 +67,9 @@
     * `-k, --key`: 用于`users.json`解密的密钥
         * 提交远程仓库后如果重新克隆需要指定密钥才能解密
         * 手动解密: 把密钥保存到`KEY`文件,安装`git-crypt`,切换到data分支运行命令`git-crypt unlock KEY`
+    * `-i, --init-only`: 仅初始化,不会去爬取清单
+    * `-C, --cli`: 登录失败后会进入交互式登录
+    * `-P, --no-push`: 阻止爬取完毕后自动push
 6. 运行程序
     * `python main.py`
 7. 初始化
