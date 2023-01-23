@@ -2,14 +2,22 @@ import git
 import time
 import traceback
 import subprocess
+from git import GitCommandError
 from multiprocessing.pool import ThreadPool
+
 from multiprocessing.dummy import Pool, Lock
 
 lock = Lock()
 
 
-def push(repo=git.Repo()):
+def push(repo=None):
+    if not repo:
+        repo = git.Repo()
     app_sha = None
+    try:
+        app_sha = repo.git.rev_parse('app').strip()
+    except GitCommandError:
+        pass
     remote_head_list = []
     remote_tag_list = []
     for i in repo.git.ls_remote('origin').split('\n'):
@@ -18,8 +26,6 @@ def push(repo=git.Repo()):
             head = refs.split('/')[2]
             if head.isdecimal():
                 remote_head_list.append((sha, head))
-            elif head == 'app':
-                app_sha = sha
         elif refs.startswith('refs/tags/'):
             tag = refs.split('/')[2]
             remote_tag_list.append((sha, tag))
@@ -75,7 +81,7 @@ def push_data(repo=None):
     except git.exc.GitCommandError:
         pass
     try:
-        repo.git.add('appinfo.json', 'userinfo.json', 'users.json')
+        repo.git.add('appinfo.json', 'userinfo.json', 'users.json', '2fa.json')
         repo.git.commit('-m', 'update')
     except git.exc.GitCommandError:
         pass

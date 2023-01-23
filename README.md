@@ -20,6 +20,8 @@
             * `status`: 登录失败的原因 - [EResult](https://partner.steamgames.com/doc/api/steam_api#EResult)
     * `data/.gitattributes`: 记录`git-crypt`需要加密的文件
         * 默认内容: `users.json filter=git-crypt diff=git-crypt`
+    * `data/2fa.json`: 记录账号`2fa`信息
+        * 格式: `{"账号": "shared_secret", ...}`
 * 以`appid`为名称的分支: 改分支用于存放清单和密钥文件
     * `depots/xxx`: 程序运行后如果该`app`有新的清单会从远程拉取对应`appid`分支,不存在则会使用`main`分支的第一次提交创建一个空的`appid`分支,使用`worktree`
       将其签出到`depots/对应appid分支`目录,例如`depots/11111`
@@ -90,7 +92,9 @@
                 4. `git push origin data`: 推送到远程`data`分支
 
 ## 如何pr清单
+
 * 本项目使用`Actions`定期检查并合并清单，是否合并成功请在`Actions`运行完后查看对应分支
+
 1. 完成部署本项目并爬取清单
 2. 打开你要`pr`清单的分支，点击`Compare & pull request`
 3. 点击`Create pull request`创建`pr`

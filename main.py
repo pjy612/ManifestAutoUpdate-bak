@@ -1,6 +1,8 @@
+import os
 import git
 import json
 import time
+import base64
 import gevent
 import logging
 import argparse
@@ -14,6 +16,7 @@ from steam.enums import EResult
 from push import push, push_data
 from multiprocessing.pool import ThreadPool
 from multiprocessing.dummy import Pool, Lock
+from steam.guard import generate_twofactor_code
 from DepotManifestGen.main import MySteamClient, MyCDNClient, get_manifest, BillingType, Result
 
 lock = Lock()
@@ -68,6 +71,7 @@ class ManifestAutoUpdate:
     users_path = ROOT / Path('users.json')
     app_info_path = ROOT / Path('appinfo.json')
     user_info_path = ROOT / Path('userinfo.json')
+    two_factor_path = ROOT / Path('2fa.json')
     key_path = ROOT / 'KEY'
     git_crypt_path = ROOT / ('git-crypt' + ('.exe' if platform.system().lower() == 'windows' else ''))
     repo = git.Repo()
@@ -133,7 +137,8 @@ class ManifestAutoUpdate:
             self.log.info(
                 f'Please save this key to Repository secrets\nIt\'s located in Project -> Settings -> Secrets -> Actions -> Repository secrets')
             with (self.ROOT / '.gitattributes').open('w') as f:
-                f.write('users.json filter=git-crypt diff=git-crypt')
+                f.write('\n'.join(
+                    [i + ' filter=git-crypt diff=git-crypt' for i in ['users.json', 'client/*.key', '2fa.json']]))
             data_repo.git.add('.gitattributes')
         if self.key and self.users_path.exists() and self.users_path.stat().st_size > 0:
             with Path(self.ROOT / 'users.json').open('rb') as f:
@@ -149,6 +154,7 @@ class ManifestAutoUpdate:
         self.account_info = MyJson(self.users_path)
         self.user_info = MyJson(self.user_info_path)
         self.app_info = MyJson(self.app_info_path)
+        self.two_factor = MyJson(self.two_factor_path)
         self.log.info('Waiting to get remote tags!')
         self.get_remote_tags()
 
@@ -173,7 +179,7 @@ class ManifestAutoUpdate:
     def get_manifest_callback(self, username, app_id, depot_id, manifest_gid, args):
         result = args.value
         if not result:
-            self.log.error(f'User {username}: get_manifest return {result.code.__repr__()}')
+            self.log.warning(f'User {username}: get_manifest return {result.code.__repr__()}')
             return
         app_path = self.ROOT / f'depots/{app_id}'
         try:
@@ -298,6 +304,7 @@ class ManifestAutoUpdate:
 
     def login(self, steam, username, password):
         self.log.info(f'Logging in to account {username}!')
+        shared_secret = self.two_factor.get(username)
         steam.username = username
         result = steam.relogin()
         wait = 1
@@ -307,7 +314,8 @@ class ManifestAutoUpdate:
             if result == EResult.RateLimitExceeded:
                 with lock:
                     time.sleep(wait)
-            result = steam.login(username, password, steam.login_key)
+            result = steam.login(username, password, steam.login_key, two_factor_code=generate_twofactor_code(
+                base64.b64decode(shared_secret)) if shared_secret else None)
         count = self.retry_num
         while result != EResult.OK and count:
             if self.cli:
@@ -320,7 +328,8 @@ class ManifestAutoUpdate:
                     break
                 with lock:
                     time.sleep(wait)
-                result = steam.login(username, password, steam.login_key)
+                result = steam.login(username, password, steam.login_key, two_factor_code=generate_twofactor_code(
+                    base64.b64decode(shared_secret)) if shared_secret else None)
             elif result in (EResult.AccountLogonDenied, EResult.AccountDisabled,
                             EResult.AccountLoginDeniedNeedTwoFactor, EResult.PasswordUnset):
                 logging.warning(f'User {username} has been disabled!')
@@ -385,10 +394,10 @@ class ManifestAutoUpdate:
             return
         app_id_list = []
         if cdn.packages_info:
-            self.log.info(f'User {username}: Waiting to get app info!')
+            self.log.info(f'User {username}: Waiting to get packages info!')
             product_info = self.retry(steam.get_product_info, packages=cdn.packages_info, retry_num=self.retry_num)
             if not product_info:
-                logging.error(f'User {username}: Failed to get app info!')
+                logging.error(f'User {username}: Failed to get packages info!')
                 return
             if cdn.packages_info:
                 for package_id, info in product_info['packages'].items():
@@ -470,6 +479,7 @@ class ManifestAutoUpdate:
             except KeyboardInterrupt:
                 with lock:
                     pool.terminate()
+                os._exit(0)
             finally:
                 self.save()
 
