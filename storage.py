@@ -3,6 +3,7 @@ import vdf
 import time
 import winreg
 import sqlite3
+import argparse
 import requests
 import traceback
 from pathlib import Path
@@ -133,13 +134,17 @@ def main(app_id):
     return False
 
 
-repo = 'wxy1343/ManifestAutoUpdate'
-
+parser = argparse.ArgumentParser()
+parser.add_argument('-r', '--repo', default='wxy1343/ManifestAutoUpdate')
+parser.add_argument('-a', '--app-id')
+args = parser.parse_args()
+repo = args.repo
 if __name__ == '__main__':
     try:
-        main(input('appid: '))
+        main(args.app_id or input('appid: '))
     except KeyboardInterrupt:
         exit()
     except:
         traceback.print_exc()
-    os.system('pause')
+    if not args.app_id:
+        os.system('pause')

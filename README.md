@@ -2,10 +2,19 @@
 
 ## 项目简介
 
-* 使用`Actions`自动获取`Steam`清单
+* 使用`Actions`自动爬取`Steam`游戏清单
 
 ## 项目结构
 
+* `main`分支
+    * `main.py`: 爬取清单主程序
+    * `storage.py`: 使用清单一键入库
+        * `-r, --repo`: 指定仓库
+        * `-a, --app-id`: 游戏id
+    * `apps.py`: 导出仓库所有游戏信息到`apps.xlsx`
+        * `-r, --repo`: 指定仓库
+    * `merge.py`: 用于`Actions`自动合并`pr`
+    * `push.py`: 用于推送分支
 * `data`分支: 用于存放账号数据,第一次运行程序初始化后会自动将其签出到`data`目录
     * `data/client`: 用于存放账号凭证文件和`cm`服务器信息的目录,需要将账号`ssfn`文件放在该目录
     * `data/users.json`: 用于存放账号和密码
@@ -19,7 +28,7 @@
             * `enable`: 是否被禁用
             * `status`: 登录失败的原因 - [EResult](https://partner.steamgames.com/doc/api/steam_api#EResult)
     * `data/.gitattributes`: 记录`git-crypt`需要加密的文件
-        * 默认内容: `users.json filter=git-crypt diff=git-crypt`
+        * 默认加密: `users.json client/*.key 2fa.json`
     * `data/2fa.json`: 记录账号`2fa`信息
         * 格式: `{"账号": "shared_secret", ...}`
 * 以`appid`为名称的分支: 改分支用于存放清单和密钥文件
@@ -90,6 +99,10 @@
                 2. `git add -u`: 增加修改的内容
                 3. `git commit -m "update"`: 提交修改
                 4. `git push origin data`: 推送到远程`data`分支
+8. Actions运行
+    * 配置`workflow`读写权限: 仓库 -> `Settings` -> `Actions` -> `General` -> `Workflow permissions`
+      -> `Read and write permissions`
+    * 仓库打开`Actions`选择`CI`点击`Run workflow`选择好参数运行
 
 ## 如何pr清单
 

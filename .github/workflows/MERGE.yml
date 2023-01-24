@@ -1,4 +1,4 @@
-name: PR
+name: MERGE
 on:
   workflow_dispatch:
     inputs:
@@ -41,5 +41,5 @@ jobs:
           git config --local user.name github-actions[bot]
           git config --local user.email 41898282+github-actions[bot]@users.noreply.github.com
           python main.py -i -k ${{ secrets.KEY }} -l ${{ github.event.inputs.level || 'INFO' }}
-          python pr.py -t ${{ secrets.GITHUB_TOKEN }} -l ${{ github.event.inputs.level || 'INFO' }}
+          python merge.py -t ${{ secrets.GITHUB_TOKEN }} -l ${{ github.event.inputs.level || 'INFO' }}
           python push.py
