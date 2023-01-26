@@ -15,13 +15,14 @@ from steam.core.manifest import DepotManifest
 
 class Depot:
 
-    def __init__(self, path, app_info=None):
+    def __init__(self, path, app_info=None, author=None):
         self.path = Path(path)
         self.repo = git.Repo(self.path)
         self.commit_list = self.get_all_commit()
         self.depot_key_dict = self.get_all_depot_key()
         self.depot_dict = self.get_all_manifest()
         self.app_info = app_info
+        self.author = author
 
     def get_all_depot_key(self):
         depot_key_dict = dict()
@@ -71,6 +72,8 @@ class Depot:
                         depot_key = self.depot_key_dict[depot_id]
                         if len(depot_key) == 64:
                             author = self.get_manifest_author(i.name)
+                            if author.name == 'github-actions[bot]':
+                                author = None
                             depot_dict[depot_id] = (depot_key, manifest, i, author)
                 except:
                     traceback.print_exc()
@@ -97,6 +100,9 @@ class Depot:
         if author:
             author_name = author.name
             author_email = author.email
+        elif self.author:
+            author_name = self.author.name
+            author_email = self.author.email
         shutil.copy(manifest_path, self.path / f'{depot_id}_{manifest_gid}.manifest')
         self.merge_depot_key(depot_id, depot_key)
         self.repo.git.add(f'{depot_id}_{manifest_gid}.manifest')
@@ -123,13 +129,14 @@ class Depot:
                     depot_key, manifest, manifest_path, author = self.depot_dict[depot_id]
                     if manifest.gid != manifest_other.gid:
                         if manifest.creation_time < manifest_other.creation_time:
-                            manifest_path.unlink()
+                            manifest_path.unlink(missing_ok=True)
+                            self.repo.git.add(manifest_path)
                             self.merge(depot_id, manifest_other.gid, manifest_path_other, depot_key_other, author_other)
             except:
                 traceback.print_exc()
 
 
-class Pr:
+class Merge:
     ROOT = Path().absolute()
     log = logging.getLogger('Pr')
     app_info_path = ROOT / Path('appinfo.json')
@@ -149,6 +156,37 @@ class Pr:
                         'Authorization': f'Bearer {token}', 'X-GitHub-Api-Version': '2022-11-28'}
         self.pr_list = self.get_all_pr()
         self.local_heads = [i.name for i in self.repo.heads]
+        self.author_name = None
+        self.author_email = None
+
+    def get_user_email(self):
+        if not self.author_name:
+            return
+        url = f'https://api.github.com/users/{self.author_name}/events/public'
+        r = requests.get(url, headers=self.headers)
+        email_set = set()
+        for i in r.json():
+            if not (payload := i.get('payload')):
+                continue
+            if not (commits := payload.get('commits')):
+                continue
+            for commit in commits:
+                if not (author := commit.get('author')):
+                    continue
+                if not (name := author.get('name')):
+                    continue
+                if name != self.author_name:
+                    continue
+                if not (email := author.get('email')):
+                    continue
+                email_set.add(email)
+        if len(email_set) == 1:
+            return email_set.pop()
+        elif len(email_set) > 1:
+            for i in email_set:
+                if not i.endswith('@users.noreply.github.com'):
+                    return i
+            return email_set.pop()
 
     def get_remote_head(self):
         head_dict = {}
@@ -195,7 +233,8 @@ class Pr:
                 self.repo.git.worktree('add', '-b', app_id, self.ROOT / 'depots' / app_id, f'origin_{app_id}')
             else:
                 self.repo.git.worktree('add', '-b', app_id, self.ROOT / 'depots' / app_id, 'app')
-        source_depot = Depot(self.ROOT / 'depots' / app_id, app_info=self.app_info)
+        source_depot = Depot(self.ROOT / 'depots' / app_id, app_info=self.app_info,
+                             author=git.Actor(self.author_name, self.author_email))
         source_depot.merge_depot(depot)
 
     def close_pr(self, num):
@@ -204,11 +243,14 @@ class Pr:
 
     def merge_all(self):
         for i in self.pr_list:
-            num, app_id = i['number'], str(i['head']['ref'])
-            if not app_id.isdecimal():
-                continue
-            self.log.info(f'Merging pr {num} to appid {app_id}!')
             try:
+                num, app_id = i['number'], str(i['head']['ref'])
+                if not app_id.isdecimal():
+                    continue
+                self.log.info(f'Merging pr {num} to appid {app_id}!')
+                self.author_name = i['user']['login']
+                if self.author_name:
+                    self.author_email = self.get_user_email()
                 self.merge(num, app_id)
             except:
                 traceback.print_exc()
@@ -224,4 +266,4 @@ parser.add_argument('-l', '--level', default='INFO')
 
 if __name__ == '__main__':
     args = parser.parse_args()
-    Pr(token=args.token, level=args.level).merge_all()
+    Merge(token=args.token, level=args.level).merge_all()
