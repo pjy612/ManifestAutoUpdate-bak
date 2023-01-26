@@ -1,28 +1,16 @@
-name: MERGE
+name: PR
 on:
   workflow_dispatch:
     inputs:
-      level:
-        description: Logging Level
+      repo:
+        description: repo
         required: true
-        default: INFO
-        type: choice
-        options:
-          - CRITICAL
-          - FATAL
-          - ERROR
-          - WARNING
-          - WARN
-          - INFO
-          - DEBUG
-          - NOTSET
-  schedule:
-    - cron: '0 */8 * * *'
+        default: https://github.com/wxy1343/ManifestAutoUpdate
 concurrency:
   group: wait
   cancel-in-progress: false
 jobs:
-  merge:
+  pr:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v3
@@ -40,6 +28,5 @@ jobs:
       - run: |
           git config --local user.name github-actions[bot]
           git config --local user.email 41898282+github-actions[bot]@users.noreply.github.com
-          python main.py -i -P -k ${{ secrets.KEY }} -l ${{ github.event.inputs.level || 'INFO' }}
-          python merge.py -t ${{ secrets.GITHUB_TOKEN }} -l ${{ github.event.inputs.level || 'INFO' }}
+          python pr.py --repo ${{ github.event.inputs.repo || 'https://github.com/wxy1343/ManifestAutoUpdate' }} -t ${{ secrets.GITHUB_TOKEN }}
           python push.py

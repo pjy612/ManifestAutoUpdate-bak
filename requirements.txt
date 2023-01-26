@@ -1,3 +1,4 @@
 steam[client]
 GitPython
 requests
+tqdm

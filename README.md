@@ -15,6 +15,9 @@
         * `-r, --repo`: 指定仓库
     * `merge.py`: 用于`Actions`自动合并`pr`
     * `push.py`: 用于推送分支
+    * `pr.py`: 用于pr分支
+        * `-r, --repo`: 指定仓库
+        * `-t, --token`: 个人访问令牌
 * `data`分支: 用于存放账号数据,第一次运行程序初始化后会自动将其签出到`data`目录
     * `data/client`: 用于存放账号凭证文件和`cm`服务器信息的目录,需要将账号`ssfn`文件放在该目录
     * `data/users.json`: 用于存放账号和密码
