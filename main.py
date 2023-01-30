@@ -1,5 +1,6 @@
 import os
 import git
+import sys
 import json
 import time
 import base64
@@ -20,6 +21,7 @@ from steam.guard import generate_twofactor_code
 from DepotManifestGen.main import MySteamClient, MyCDNClient, get_manifest, BillingType, Result
 
 lock = Lock()
+sys.setrecursionlimit(100000)
 parser = argparse.ArgumentParser()
 parser.add_argument('-c', '--credential-location', default=None)
 parser.add_argument('-l', '--level', default='INFO')
@@ -30,6 +32,7 @@ parser.add_argument('-k', '--key', default=None)
 parser.add_argument('-i', '--init-only', action='store_true', default=False)
 parser.add_argument('-C', '--cli', action='store_true', default=False)
 parser.add_argument('-P', '--no-push', action='store_true', default=False)
+parser.add_argument('-u', '--update', action='store_true', default=False)
 
 
 class MyJson(dict):
@@ -157,6 +160,7 @@ class ManifestAutoUpdate:
         self.two_factor = MyJson(self.two_factor_path)
         self.log.info('Waiting to get remote tags!')
         self.get_remote_tags()
+        self.update_user_list = []
 
     def download_git_crypt(self):
         if self.git_crypt_path.exists():
@@ -456,15 +460,22 @@ class ManifestAutoUpdate:
                 self.user_info[username]['update'] = int(time.time())
         gevent.joinall(job_list)
 
-    def run(self):
+    def run(self, update=False):
         if not self.account_info or self.init_only:
             self.save()
             self.account_info.dump()
             return
+        if update and not self.update_user_list:
+            self.update()
+            if not self.update_user_list:
+                return
         with Pool(self.pool_num) as pool:
             pool: ThreadPool
             result_list = []
             for username in self.account_info:
+                if self.update_user_list and username not in self.update_user_list:
+                    self.log.info(f'User {username} has skipped the update!')
+                    continue
                 password, sentry_name = self.account_info[username]
                 result_list.append(
                     pool.apply_async(LogExceptions(self.get_manifest), (username, password, sentry_name)))
@@ -483,12 +494,61 @@ class ManifestAutoUpdate:
             finally:
                 self.save()
 
+    def update(self):
+        app_id_list = []
+        for user, info in self.user_info.items():
+            if info['enable']:
+                if info['app']:
+                    app_id_list.extend(info['app'])
+        app_id_list = list(set(app_id_list))
+        logging.debug(app_id_list)
+        steam = MySteamClient(str(self.credential_location))
+        self.log.info('Logging in to anonymous!')
+        steam.anonymous_login()
+        self.log.info('Waiting to get all app info!')
+        app_info_dict = {}
+        count = 0
+        while app_id_list[count:count + 300]:
+            fresh_resp = self.retry(steam.get_product_info, app_id_list[count:count + 300],
+                                    retry_num=self.retry_num, timeout=60)
+            count += 300
+            if fresh_resp:
+                for app_id, info in fresh_resp['apps'].items():
+                    if depots := info.get('depots'):
+                        app_info_dict[int(app_id)] = depots
+                self.log.info(f'Acquired {len(app_info_dict)} app info!')
+        update_app_set = set()
+        for app_id, app_info in app_info_dict.items():
+            for depot_id, depot in app_info.items():
+                if depot_id.isdecimal():
+                    if manifests := depot.get('manifests'):
+                        if manifest := manifests.get('public'):
+                            if depot_id in self.app_info and self.app_info[depot_id] != manifest:
+                                update_app_set.add(app_id)
+        update_app_user = {}
+        update_user_set = set()
+        for user, info in self.user_info.items():
+            if info['enable']:
+                if info['app']:
+                    for app_id in info['app']:
+                        if int(app_id) in update_app_set:
+                            if int(app_id) not in update_app_user:
+                                update_app_user[int(app_id)] = []
+                            update_app_user[int(app_id)].append(user)
+                            update_user_set.add(user)
+        self.log.debug(str(update_app_user))
+        self.update_user_list = list(update_user_set)
+        for app_id, user_list in update_app_user.items():
+            self.log.info(f'{app_id}: {",".join(user_list)}')
+        self.log.info(f'{len(update_app_user)} app and {len(self.update_user_list)} users need to update!')
+        return self.update_user_list
+
 
 if __name__ == '__main__':
     args = parser.parse_args()
     ManifestAutoUpdate(args.credential_location, level=args.level, pool_num=args.pool_num, retry_num=args.retry_num,
                        update_wait_time=args.update_wait_time, key=args.key, init_only=args.init_only,
-                       cli=args.cli).run()
+                       cli=args.cli).run(update=args.update)
     if not args.no_push:
         if not args.init_only:
             push()
