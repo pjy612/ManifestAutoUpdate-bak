@@ -30,6 +30,8 @@ on:
         default: 1
     branches:
       - main
+  schedule:
+    - cron: '0 */1 * * *'
 concurrency:
   group: wait
   cancel-in-progress: false
