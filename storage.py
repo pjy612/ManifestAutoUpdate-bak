@@ -1,6 +1,7 @@
 import os
 import vdf
 import time
+import shutil
 import winreg
 import sqlite3
 import argparse
@@ -90,7 +91,7 @@ def stool_add(depot_list):
     c = conn.cursor()
     for depot_id, depot_key in depot_list:
         if depot_key:
-            c.execute(f'insert or replace into Appinfo (appid,type,DecryptionKey) values ({depot_id},1,"{depot_key}")')
+            c.execute(f'insert or replace into Appinfo (appid,DecryptionKey) values ({depot_id},"{depot_key}")')
         else:
             c.execute(f'insert or replace into Appinfo (appid,type) values ({depot_id},1)')
     conn.commit()
@@ -134,14 +135,44 @@ def main(app_id):
     return False
 
 
+def app(app_path):
+    app_path = Path(app_path)
+    if not app_path.is_dir():
+        raise NotADirectoryError(app_path)
+    steam_path = get_steam_path()
+    app_id_list = list(filter(str.isdecimal, app_path.name.strip().split('-')))
+    if app_id_list:
+        stool_add([(app_id_list[0], None)])
+    else:
+        raise Exception('目录名称不是app_id')
+    for file in app_path.iterdir():
+        if file.is_file():
+            if file.suffix == '.manifest':
+                depot_cache_path = steam_path / 'depotcache'
+                shutil.copy(file, depot_cache_path)
+                print(f'导入清单成功: {file.name}')
+            elif file.name == 'config.vdf':
+                with file.open('r', encoding='utf-8') as f:
+                    depots_config = vdf.loads(f.read())
+                if depotkey_merge(steam_path / 'config' / 'config.vdf', depots_config):
+                    print('合并config.vdf成功')
+                if stool_add([(depot_id, depots_config['depots'][depot_id]['DecryptionKey']) for depot_id in
+                              depots_config['depots']]):
+                    print('导入steamtools成功')
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument('-r', '--repo', default='wxy1343/ManifestAutoUpdate')
 parser.add_argument('-a', '--app-id')
+parser.add_argument('-p', '--app-path')
 args = parser.parse_args()
 repo = args.repo
 if __name__ == '__main__':
     try:
-        main(args.app_id or input('appid: '))
+        if args.app_path:
+            app(args.app_path)
+        else:
+            main(args.app_id or input('appid: '))
     except KeyboardInterrupt:
         exit()
     except:
