@@ -32,7 +32,7 @@ def get(sha, path):
                     raise
 
 
-def get_manifest(sha, path, steam_path: Path):
+def get_manifest(sha, path, steam_path: Path, app_id=None):
     try:
         if path.endswith('.manifest'):
             depot_cache_path = steam_path / 'depotcache'
@@ -56,8 +56,9 @@ def get_manifest(sha, path, steam_path: Path):
             depots_config = vdf.loads(content.decode(encoding='utf-8'))
             if depotkey_merge(steam_path / 'config' / path, depots_config):
                 print('合并config.vdf成功')
-            if stool_add([(depot_id, depots_config['depots'][depot_id]['DecryptionKey']) for depot_id in
-                          depots_config['depots']]):
+            if stool_add(
+                    [(depot_id, '1' if depot_id == app_id else None, depots_config['depots'][depot_id]['DecryptionKey'])
+                     for depot_id in depots_config['depots']]):
                 print('导入steamtools成功')
     except KeyboardInterrupt:
         raise
@@ -89,11 +90,12 @@ def stool_add(depot_list):
     info_path = Path('~/AppData/Roaming/Stool/info.pak').expanduser()
     conn = sqlite3.connect(info_path)
     c = conn.cursor()
-    for depot_id, depot_key in depot_list:
+    for depot_id, type_, depot_key in depot_list:
         if depot_key:
-            c.execute(f'insert or replace into Appinfo (appid,DecryptionKey) values ({depot_id},"{depot_key}")')
-        else:
-            c.execute(f'insert or replace into Appinfo (appid,type) values ({depot_id},1)')
+            depot_key = f'"{depot_key}"'
+        columns = dict(filter(lambda x: x[1], zip(['appid', 'type', 'DecryptionKey'], [depot_id, type_, depot_key])))
+        sql = 'insert or replace into Appinfo ({}) values ({})'.format(','.join(columns), ','.join(columns.values()))
+        c.execute(sql)
     conn.commit()
     return True
 
@@ -112,12 +114,12 @@ def main(app_id):
         url = r.json()['commit']['commit']['tree']['url']
         r = requests.get(url)
         if 'tree' in r.json():
-            stool_add([(app_id, None)])
+            stool_add([(app_id, '1', None)])
             result_list = []
             with Pool(32) as pool:
                 pool: ThreadPool
                 for i in r.json()['tree']:
-                    result_list.append(pool.apply_async(get_manifest, (sha, i['path'], get_steam_path())))
+                    result_list.append(pool.apply_async(get_manifest, (sha, i['path'], get_steam_path(), app_id)))
                 try:
                     while pool._state == 'RUN':
                         if all([result.ready() for result in result_list]):
@@ -142,7 +144,8 @@ def app(app_path):
     steam_path = get_steam_path()
     app_id_list = list(filter(str.isdecimal, app_path.name.strip().split('-')))
     if app_id_list:
-        stool_add([(app_id_list[0], None)])
+        app_id = app_id_list[0]
+        stool_add([(app_id, '1', None)])
     else:
         raise Exception('目录名称不是app_id')
     for file in app_path.iterdir():
@@ -156,7 +159,8 @@ def app(app_path):
                     depots_config = vdf.loads(f.read())
                 if depotkey_merge(steam_path / 'config' / 'config.vdf', depots_config):
                     print('合并config.vdf成功')
-                if stool_add([(depot_id, depots_config['depots'][depot_id]['DecryptionKey']) for depot_id in
+                if stool_add([(depot_id, '1' if depot_id == app_id else None,
+                               depots_config['depots'][depot_id]['DecryptionKey']) for depot_id in
                               depots_config['depots']]):
                     print('导入steamtools成功')
 
@@ -177,5 +181,5 @@ if __name__ == '__main__':
         exit()
     except:
         traceback.print_exc()
-    if not args.app_id:
+    if not args.app_id and not args.app_path:
         os.system('pause')
