@@ -73,7 +73,7 @@ def depotkey_merge(config_path, depots_config):
         with lock:
             print('config.vdf不存在')
         return
-    with open(config_path) as f:
+    with open(config_path, encoding='utf-8') as f:
         config = vdf.load(f)
     software = config['InstallConfigStore']['Software']
     valve = software.get('Valve') or software.get('valve')
