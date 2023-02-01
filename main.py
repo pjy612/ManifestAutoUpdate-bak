@@ -537,6 +537,9 @@ class ManifestAutoUpdate:
                             update_app_user[int(app_id)].append(user)
                             update_user_set.add(user)
         self.log.debug(str(update_app_user))
+        for user in self.account_info:
+            if user not in self.user_info:
+                update_user_set.add(user)
         self.update_user_list = list(update_user_set)
         for app_id, user_list in update_app_user.items():
             self.log.info(f'{app_id}: {",".join(user_list)}')
