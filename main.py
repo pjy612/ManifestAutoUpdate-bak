@@ -33,6 +33,7 @@ parser.add_argument('-i', '--init-only', action='store_true', default=False)
 parser.add_argument('-C', '--cli', action='store_true', default=False)
 parser.add_argument('-P', '--no-push', action='store_true', default=False)
 parser.add_argument('-u', '--update', action='store_true', default=False)
+parser.add_argument('-a', '--app-id', dest='app_id_list', action='extend', nargs='*')
 
 
 class MyJson(dict):
@@ -86,7 +87,7 @@ class ManifestAutoUpdate:
     tags = set()
 
     def __init__(self, credential_location=None, level=None, pool_num=None, retry_num=None, update_wait_time=None,
-                 key=None, init_only=False, cli=False):
+                 key=None, init_only=False, cli=False, app_id_list=None):
         if level:
             level = logging.getLevelName(level.upper())
         else:
@@ -161,6 +162,13 @@ class ManifestAutoUpdate:
         self.log.info('Waiting to get remote tags!')
         self.get_remote_tags()
         self.update_user_list = []
+        if app_id_list:
+            app_id_list = set(int(i) for i in app_id_list if i.isdecimal())
+            for user, info in self.user_info.items():
+                if info['enable'] and info['app']:
+                    for app_id in info['app']:
+                        if app_id in app_id_list:
+                            self.update_user_list.append(user)
 
     def download_git_crypt(self):
         if self.git_crypt_path.exists():
@@ -528,19 +536,18 @@ class ManifestAutoUpdate:
         update_app_user = {}
         update_user_set = set()
         for user, info in self.user_info.items():
-            if info['enable']:
-                if info['app']:
-                    for app_id in info['app']:
-                        if int(app_id) in update_app_set:
-                            if int(app_id) not in update_app_user:
-                                update_app_user[int(app_id)] = []
-                            update_app_user[int(app_id)].append(user)
-                            update_user_set.add(user)
+            if info['enable'] and info['app']:
+                for app_id in info['app']:
+                    if int(app_id) in update_app_set:
+                        if int(app_id) not in update_app_user:
+                            update_app_user[int(app_id)] = []
+                        update_app_user[int(app_id)].append(user)
+                        update_user_set.add(user)
         self.log.debug(str(update_app_user))
         for user in self.account_info:
             if user not in self.user_info:
                 update_user_set.add(user)
-        self.update_user_list = list(update_user_set)
+        self.update_user_list.extend(list(update_user_set))
         for app_id, user_list in update_app_user.items():
             self.log.info(f'{app_id}: {",".join(user_list)}')
         self.log.info(f'{len(update_app_user)} app and {len(self.update_user_list)} users need to update!')
@@ -551,7 +558,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     ManifestAutoUpdate(args.credential_location, level=args.level, pool_num=args.pool_num, retry_num=args.retry_num,
                        update_wait_time=args.update_wait_time, key=args.key, init_only=args.init_only,
-                       cli=args.cli).run(update=args.update)
+                       cli=args.cli, app_id_list=args.app_id_list).run(update=args.update)
     if not args.no_push:
         if not args.init_only:
             push()
