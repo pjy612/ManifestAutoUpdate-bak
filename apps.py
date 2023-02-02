@@ -49,7 +49,7 @@ class XiaoHeiHe:
         url = f'https://api.xiaoheihe.cn/game/web/get_game_detail/?appid={app_id}'
         while True:
             try:
-                r = requests.get(url, timeout=5)
+                r = requests.get(url, headers={'User-Agent': ''}, timeout=5)
                 if r.status_code != 200:
                     with lock:
                         print(r.status_code)
