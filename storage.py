@@ -57,7 +57,7 @@ def get_manifest(sha, path, steam_path: Path, app_id=None):
             if depotkey_merge(steam_path / 'config' / path, depots_config):
                 print('合并config.vdf成功')
             if stool_add(
-                    [(depot_id, '1' if depot_id == app_id else None, depots_config['depots'][depot_id]['DecryptionKey'])
+                    [(depot_id, '1', depots_config['depots'][depot_id]['DecryptionKey'])
                      for depot_id in depots_config['depots']]):
                 print('导入steamtools成功')
     except KeyboardInterrupt:
@@ -159,7 +159,7 @@ def app(app_path):
                     depots_config = vdf.loads(f.read())
                 if depotkey_merge(steam_path / 'config' / 'config.vdf', depots_config):
                     print('合并config.vdf成功')
-                if stool_add([(depot_id, '1' if depot_id == app_id else None,
+                if stool_add([(depot_id, '1',
                                depots_config['depots'][depot_id]['DecryptionKey']) for depot_id in
                               depots_config['depots']]):
                     print('导入steamtools成功')
