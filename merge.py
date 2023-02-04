@@ -248,8 +248,12 @@ class Merge:
                 if not app_id.isdecimal():
                     continue
                 self.author_name = i['user']['login']
+                user_id = i['user']['id']
                 if self.author_name:
-                    self.author_email = self.get_user_email()
+                    if not self.author_email:
+                        self.author_email = self.get_user_email()
+                    if not self.author_email:
+                        self.author_email = f'{user_id}+{self.author_name}@users.noreply.github.com'
                 self.log.info(
                     f'Merging pr {num} to appid {app_id} from {git.Actor(self.author_name, self.author_email).__repr__()}!')
                 self.merge(num, app_id)
