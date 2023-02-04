@@ -1,4 +1,5 @@
 import git
+import time
 import argparse
 import requests
 from tqdm import tqdm
@@ -73,14 +74,19 @@ class Pr:
         self.check_diff()
         for app_id in self.diff_app_set:
             print(app_id)
+        wait_time = 1
         for app_id in self.diff_app_set:
             url = f'https://api.github.com/repos/{self.source_owner_name}/{self.source_repo_name}/pulls'
             r = requests.post(url, headers=self.headers,
                               json={'title': str(app_id), 'head': f'{self.owner_name}:{app_id}', 'base': 'main'})
             if r.status_code == 201:
                 print(f'pr successfully: {app_id}')
-            else:
-                print(f'pr failed: {app_id}, result: {r.text}')
+                continue
+            print(f'pr failed: {app_id}, result: {r.text}')
+            if r.status_code == 403:
+                print(f'Wait {wait_time} second!')
+                time.sleep(wait_time)
+                wait_time += 1
 
 
 parser = argparse.ArgumentParser()
