@@ -102,6 +102,7 @@ class Pr:
                               json={'title': str(app_id), 'head': f'{self.owner_name}:{app_id}', 'base': 'main'})
             if r.status_code == 201:
                 print(f'pr successfully: {app_id}')
+                time.sleep(3)
                 continue
             print(f'pr failed: {app_id}, result: {r.text}, headers: {r.headers}')
             if r.status_code == 403 and 'x-ratelimit-reset' in r.headers:
