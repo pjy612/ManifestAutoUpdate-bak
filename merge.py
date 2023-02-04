@@ -247,10 +247,11 @@ class Merge:
                 num, app_id = i['number'], str(i['head']['ref'])
                 if not app_id.isdecimal():
                     continue
-                self.log.info(f'Merging pr {num} to appid {app_id}!')
                 self.author_name = i['user']['login']
                 if self.author_name:
                     self.author_email = self.get_user_email()
+                self.log.info(
+                    f'Merging pr {num} to appid {app_id} from {git.Actor(self.author_name, self.author_email).__repr__()}!')
                 self.merge(num, app_id)
             except:
                 traceback.print_exc()
