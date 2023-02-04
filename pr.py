@@ -19,6 +19,27 @@ class Pr:
         self.source_app_list, self.source_tag_list = self.get_refs_list(source_repo)
         self.local_app_list = [int(i.name) for i in self.repo.heads if i.name.isdecimal()]
         self.diff_app_set = set()
+        self.pr_list = self.get_all_pr()
+
+    def get_all_pr(self):
+        pr_list = []
+        page = 1
+        while True:
+            url = f'https://api.github.com/repos/{self.source_owner_name}/{self.source_repo_name}/pulls?per_page=100&page={page}'
+            r = requests.get(url, headers=self.headers)
+            if not r.json():
+                break
+            pr_list.extend(r.json())
+            page += 1
+        return pr_list
+
+    def check_pr_exist(self, app_id):
+        for pr in self.pr_list:
+            if head := pr.get('head'):
+                if label := head.get('label'):
+                    if label == f'{self.source_owner_name}:{app_id}':
+                        return True
+        return False
 
     def add_source_repo(self):
         if not self.source_repo:
@@ -67,7 +88,8 @@ class Pr:
                         app_id = int(name)
                         if app_id not in self.diff_app_set:
                             self.tqdm.set_postfix(tag=tag, app_id=app_id, refresh=False)
-                        self.diff_app_set.add(app_id)
+                        if not self.check_pr_exist(app_id):
+                            self.diff_app_set.add(app_id)
             self.tqdm.update()
 
     def pr(self):
