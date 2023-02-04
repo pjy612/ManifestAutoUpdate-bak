@@ -74,7 +74,6 @@ class Pr:
         self.check_diff()
         for app_id in self.diff_app_set:
             print(app_id)
-        wait_time = 1
         for app_id in self.diff_app_set:
             url = f'https://api.github.com/repos/{self.source_owner_name}/{self.source_repo_name}/pulls'
             r = requests.post(url, headers=self.headers,
@@ -82,11 +81,13 @@ class Pr:
             if r.status_code == 201:
                 print(f'pr successfully: {app_id}')
                 continue
-            print(f'pr failed: {app_id}, result: {r.text}')
-            if r.status_code == 403:
-                print(f'Wait {wait_time} second!')
-                time.sleep(wait_time)
-                wait_time += 1
+            print(f'pr failed: {app_id}, result: {r.text}, headers: {r.headers}')
+            if r.status_code == 403 and 'x-ratelimit-reset' in r.headers:
+                t = int(r.headers['x-ratelimit-reset'])
+                now = int(time.time())
+                if now < t:
+                    print(f'Wait {t - now} second!')
+                    time.sleep(t - now)
 
 
 parser = argparse.ArgumentParser()
