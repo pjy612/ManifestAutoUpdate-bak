@@ -78,9 +78,9 @@ class Pr:
             r = requests.post(url, headers=self.headers,
                               json={'title': str(app_id), 'head': f'{self.owner_name}:{app_id}', 'base': 'main'})
             if r.status_code == 201:
-                print(f'pr成功: {app_id}')
+                print(f'pr successfully: {app_id}')
             else:
-                print(f'pr失败: {app_id}, result: {r.json()}')
+                print(f'pr failed: {app_id}, result: {r.text}')
 
 
 parser = argparse.ArgumentParser()

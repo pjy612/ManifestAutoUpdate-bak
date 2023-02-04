@@ -29,4 +29,3 @@ jobs:
           git config --local user.name github-actions[bot]
           git config --local user.email 41898282+github-actions[bot]@users.noreply.github.com
           python pr.py --repo ${{ github.event.inputs.repo || 'https://github.com/wxy1343/ManifestAutoUpdate' }} -t ${{ secrets.GITHUB_TOKEN }}
-          python push.py
