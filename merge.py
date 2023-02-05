@@ -72,7 +72,7 @@ class Depot:
                         depot_key = self.depot_key_dict[depot_id]
                         if len(depot_key) == 64:
                             author = self.get_manifest_author(i.name)
-                            if author.name == 'github-actions[bot]':
+                            if author and author.name == 'github-actions[bot]':
                                 author = None
                             depot_dict[depot_id] = (depot_key, manifest, i, author)
                 except:
