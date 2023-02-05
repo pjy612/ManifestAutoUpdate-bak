@@ -19,9 +19,11 @@ class Pr:
         self.source_app_list, self.source_tag_list = self.get_refs_list(source_repo)
         self.local_app_list = [int(i.name) for i in self.repo.heads if i.name.isdecimal()]
         self.diff_app_set = set()
-        self.pr_list = self.get_all_pr()
+        self.pr_list = []
 
     def get_all_pr(self):
+        if self.pr_list:
+            return self.pr_list
         pr_list = []
         page = 1
         while True:
@@ -31,10 +33,11 @@ class Pr:
                 break
             pr_list.extend(r.json())
             page += 1
-        return pr_list
+        self.pr_list = pr_list
+        return self.pr_list
 
     def check_pr_exist(self, app_id):
-        for pr in self.pr_list:
+        for pr in self.get_all_pr():
             if head := pr.get('head'):
                 if label := head.get('label'):
                     if label == f'{self.source_owner_name}:{app_id}':
@@ -88,21 +91,23 @@ class Pr:
                         app_id = int(name)
                         if app_id not in self.diff_app_set:
                             self.tqdm.set_postfix(tag=tag, app_id=app_id, refresh=False)
-                        if not self.check_pr_exist(app_id):
                             self.diff_app_set.add(app_id)
             self.tqdm.update()
 
     def pr(self):
         self.check_diff()
+        app_id_list = []
         for app_id in self.diff_app_set:
-            print(app_id)
-        for app_id in self.diff_app_set:
+            if not self.check_pr_exist(app_id):
+                print(app_id)
+                app_id_list.append(app_id)
+        for app_id in app_id_list:
             url = f'https://api.github.com/repos/{self.source_owner_name}/{self.source_repo_name}/pulls'
             r = requests.post(url, headers=self.headers,
                               json={'title': str(app_id), 'head': f'{self.owner_name}:{app_id}', 'base': 'main'})
             if r.status_code == 201:
                 print(f'pr successfully: {app_id}')
-                time.sleep(3)
+                time.sleep(30)
                 continue
             print(f'pr failed: {app_id}, result: {r.text}, headers: {r.headers}')
             if r.status_code == 403 and 'x-ratelimit-reset' in r.headers:
@@ -111,6 +116,7 @@ class Pr:
                 if now < t:
                     print(f'Wait {t - now} second!')
                     time.sleep(t - now)
+            time.sleep(30)
 
 
 parser = argparse.ArgumentParser()
