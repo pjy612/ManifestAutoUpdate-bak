@@ -146,7 +146,7 @@ def export_xlsx():
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-r', '--repo', default='.')
+parser.add_argument('-r', '--repo', default='https://github.com/wxy1343/ManifestAutoUpdate')
 if __name__ == '__main__':
     args = parser.parse_args()
     get_app_info(args.repo)
