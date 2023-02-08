@@ -1,4 +1,5 @@
 steam[client]
 GitPython
 requests
+openpyxl
 tqdm

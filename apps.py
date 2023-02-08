@@ -1,6 +1,7 @@
 import git
 import json
 import time
+import logging
 import argparse
 import requests
 import traceback
@@ -52,7 +53,12 @@ class XiaoHeiHe:
                 r = requests.get(url, headers={'User-Agent': ''}, timeout=5)
                 if r.status_code != 200:
                     with lock:
-                        print(r.status_code)
+                        self.pbar.clear()
+                        logging.info(r.status_code)
+                        logging.info(r.headers)
+                        logging.info(r.text)
+                        logging.info('Wait 300 seconds!')
+                        time.sleep(300)
                     continue
                 break
             except requests.exceptions.ConnectionError:
@@ -86,10 +92,15 @@ class XiaoHeiHe:
                     release_date = detail['result']['release_date']
             info = {'type': type_, 'name': name, 'cname': cname, 'tags': tags,
                     'score': score, 'release_date': release_date}
+            wait = 60
             with lock:
                 self.xiao_hei_he[int(app_id)] = {**info, 'about': about}
-            self.pbar.set_postfix(**{str(i): str(j) for i, j in info.items()})
-            self.pbar.update()
+                self.pbar.set_postfix(**{str(i): str(j) for i, j in info.items()})
+                self.pbar.update()
+                if self.pbar.n and self.pbar.n % 150 == 0:
+                    self.pbar.clear()
+                    logging.info(f'Wait {wait} seconds!')
+                    time.sleep(wait)
         except:
             traceback.print_exc()
 
@@ -124,13 +135,23 @@ def get_app_info(repo):
         app_id = head.split('/')[-1]
         if app_id.isdecimal() and app_id not in app:
             app_id_list.append(int(app_id))
-    fresh_resp = steam.get_product_info(app_id_list)
-    if fresh_resp:
-        app.update(fresh_resp['apps'])
+    logging.info('Waiting to get all app info!')
+    app_info_dict = {}
+    count = 0
+    while app_id_list[count:count + 300]:
+        fresh_resp = steam.get_product_info(app_id_list[count:count + 300], timeout=60)
+        count += 300
+        if fresh_resp:
+            for app_id, info in fresh_resp['apps'].items():
+                app_info_dict[int(app_id)] = info
+            logging.info(f'Acquired {len(app_info_dict)} app info!')
+    if app_info_dict:
+        app.update(app_info_dict)
         app.dump()
 
 
-def export_xlsx():
+def export_xlsx(save_path='.'):
+    save_path = Path(save_path).absolute()
     workbook = Workbook()
     workbook.remove(workbook.worksheets[0])
     ws = workbook.create_sheet('游戏')
@@ -142,13 +163,18 @@ def export_xlsx():
         except IllegalCharacterError:
             ws.append([i, info['name'], info['cname'], ','.join(info['tags']), info['type'], info['score'],
                        info['release_date'], ILLEGAL_CHARACTERS_RE.sub('', info['about'])])
-    workbook.save('apps.xlsx')
+    if save_path.is_dir():
+        save_path = save_path / 'apps.xlsx'
+    workbook.save(save_path)
 
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-r', '--repo', default='https://github.com/wxy1343/ManifestAutoUpdate')
+parser.add_argument('-o', '--output', default='.')
+logging.basicConfig(format='%(asctime)s - %(pathname)s[line:%(lineno)d] - %(levelname)s: %(message)s',
+                    level=logging.INFO)
 if __name__ == '__main__':
     args = parser.parse_args()
     get_app_info(args.repo)
     XiaoHeiHe().run()
-    export_xlsx()
+    export_xlsx(args.output)

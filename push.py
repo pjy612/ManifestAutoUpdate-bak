@@ -2,9 +2,9 @@ import git
 import time
 import traceback
 import subprocess
+from pathlib import Path
 from git import GitCommandError
 from multiprocessing.pool import ThreadPool
-
 from multiprocessing.dummy import Pool, Lock
 
 lock = Lock()
@@ -81,11 +81,15 @@ def push_data(repo=None):
     except git.exc.GitCommandError:
         pass
     try:
-        repo.git.add('appinfo.json', 'userinfo.json', 'users.json', '2fa.json')
-        repo.git.commit('-m', 'update')
+        file_list = ['appinfo.json', 'userinfo.json', 'users.json', '2fa.json', 'apps.xlsx']
+        for i in file_list:
+            path = Path('data') / i
+            if path.is_file():
+                repo.git.add(path.name)
     except git.exc.GitCommandError:
-        pass
+        traceback.print_exc()
     try:
+        repo.git.commit('-m', 'update')
         repo.git.push('origin', 'data')
     except git.exc.GitCommandError:
         traceback.print_exc()
