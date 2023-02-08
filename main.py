@@ -34,6 +34,7 @@ parser.add_argument('-C', '--cli', action='store_true', default=False)
 parser.add_argument('-P', '--no-push', action='store_true', default=False)
 parser.add_argument('-u', '--update', action='store_true', default=False)
 parser.add_argument('-a', '--app-id', dest='app_id_list', action='extend', nargs='*')
+parser.add_argument('-U', '--users', dest='user_list', action='extend', nargs='*')
 
 
 class MyJson(dict):
@@ -87,7 +88,7 @@ class ManifestAutoUpdate:
     tags = set()
 
     def __init__(self, credential_location=None, level=None, pool_num=None, retry_num=None, update_wait_time=None,
-                 key=None, init_only=False, cli=False, app_id_list=None):
+                 key=None, init_only=False, cli=False, app_id_list=None, user_list=None):
         if level:
             level = logging.getLevelName(level.upper())
         else:
@@ -161,14 +162,16 @@ class ManifestAutoUpdate:
         self.two_factor = MyJson(self.two_factor_path)
         self.log.info('Waiting to get remote tags!')
         self.get_remote_tags()
-        self.update_user_list = []
+        self.update_user_list = [*user_list] if user_list else []
+        self.update_app_id_list = []
         if app_id_list:
-            app_id_list = set(int(i) for i in app_id_list if i.isdecimal())
+            self.update_app_id_list = list(set(int(i) for i in app_id_list if i.isdecimal()))
             for user, info in self.user_info.items():
                 if info['enable'] and info['app']:
                     for app_id in info['app']:
-                        if app_id in app_id_list:
+                        if app_id in self.update_app_id_list:
                             self.update_user_list.append(user)
+        self.update_user_list = list(set(self.update_user_list))
 
     def download_git_crypt(self):
         if self.git_crypt_path.exists():
@@ -430,6 +433,8 @@ class ManifestAutoUpdate:
         job_list = []
         flag = True
         for app_id in app_id_list:
+            if self.update_app_id_list and int(app_id) not in self.update_app_id_list:
+                continue
             with lock:
                 if int(app_id) in self.app_lock:
                     continue
@@ -482,7 +487,7 @@ class ManifestAutoUpdate:
             result_list = []
             for username in self.account_info:
                 if self.update_user_list and username not in self.update_user_list:
-                    self.log.info(f'User {username} has skipped the update!')
+                    self.log.debug(f'User {username} has skipped the update!')
                     continue
                 password, sentry_name = self.account_info[username]
                 result_list.append(
@@ -558,7 +563,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     ManifestAutoUpdate(args.credential_location, level=args.level, pool_num=args.pool_num, retry_num=args.retry_num,
                        update_wait_time=args.update_wait_time, key=args.key, init_only=args.init_only,
-                       cli=args.cli, app_id_list=args.app_id_list).run(update=args.update)
+                       cli=args.cli, app_id_list=args.app_id_list, user_list=args.user_list).run(update=args.update)
     if not args.no_push:
         if not args.init_only:
             push()
