@@ -8,6 +8,8 @@ on:
         default: 'https://github.com/wxy1343/ManifestAutoUpdate'
     branches:
       - main
+  schedule:
+    - cron: '0 16 * * *'
 concurrency:
   group: wait
   cancel-in-progress: false
@@ -31,5 +33,5 @@ jobs:
           git config --local user.name github-actions[bot]
           git config --local user.email 41898282+github-actions[bot]@users.noreply.github.com
           python main.py -i -P -k ${{ secrets.KEY }}
-          python apps.py -r ${{ github.event.inputs.repo }} -o data
+          python apps.py -r ${{ github.event.inputs.repo || 'https://github.com/wxy1343/ManifestAutoUpdate' }} -o data
           python push.py
