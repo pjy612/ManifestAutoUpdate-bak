@@ -1,15 +1,14 @@
 import git
 import vdf
 import shutil
+import struct
 import logging
 import argparse
-import platform
 import requests
 import traceback
-import subprocess
 from main import MyJson
 from pathlib import Path
-
+from binascii import crc32
 from steam.core.manifest import DepotManifest
 
 
@@ -62,9 +61,8 @@ class Depot:
                 try:
                     with i.open('rb') as f:
                         manifest = DepotManifest(f.read())
-                    crc_clear = int(subprocess.check_output([Path(
-                        'DepotManifestGen') / f'calc_crc_clear{".exe" if platform.system().lower() == "windows" else ""}',
-                                                             i]).strip())
+                    buffer = manifest.payload.SerializeToString()
+                    crc_clear = crc32(struct.pack('<I', len(buffer)) + buffer)
                     if manifest.metadata.crc_clear != crc_clear:
                         manifest.metadata.crc_clear = crc_clear
                     depot_id = int(manifest.depot_id)
