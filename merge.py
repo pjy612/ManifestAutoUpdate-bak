@@ -136,7 +136,7 @@ class Depot:
 
 class Merge:
     ROOT = Path().absolute()
-    log = logging.getLogger('Pr')
+    log = logging.getLogger('Merge')
     app_info_path = ROOT / Path('appinfo.json')
     app_info = MyJson(app_info_path)
 

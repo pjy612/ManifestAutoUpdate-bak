@@ -6,6 +6,20 @@ on:
         description: repo
         required: true
         default: https://github.com/wxy1343/ManifestAutoUpdate
+      level:
+        description: Logging Level
+        required: true
+        default: INFO
+        type: choice
+        options:
+          - CRITICAL
+          - FATAL
+          - ERROR
+          - WARNING
+          - WARN
+          - INFO
+          - DEBUG
+          - NOTSET
 concurrency:
   group: wait
   cancel-in-progress: false
@@ -26,4 +40,4 @@ jobs:
       - run: |
           git config --local user.name github-actions[bot]
           git config --local user.email 41898282+github-actions[bot]@users.noreply.github.com
-          python pr.py --repo ${{ github.event.inputs.repo || 'https://github.com/wxy1343/ManifestAutoUpdate' }} -t ${{ secrets.token }}
+          python pr.py --repo ${{ github.event.inputs.repo || 'https://github.com/wxy1343/ManifestAutoUpdate' }} -t ${{ secrets.token }} -l ${{ github.event.inputs.level || 'INFO' }}

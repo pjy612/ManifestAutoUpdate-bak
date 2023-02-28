@@ -1,12 +1,21 @@
 import git
 import time
+import logging
 import argparse
 import requests
 from tqdm import tqdm
 
 
 class Pr:
-    def __init__(self, repo='.', source_repo=None, token=None):
+    log = logging.getLogger('Pr')
+
+    def __init__(self, repo='.', source_repo=None, token=None, level=None):
+        if level:
+            level = logging.getLevelName(level.upper())
+        else:
+            level = logging.INFO
+        logging.basicConfig(format='%(asctime)s - %(pathname)s[line:%(lineno)d] - %(levelname)s: %(message)s',
+                            level=level)
         self.tqdm = None
         self.repo = git.Repo(repo)
         self.source_repo = source_repo
@@ -34,6 +43,7 @@ class Pr:
             pr_list.extend(r.json())
             page += 1
         self.pr_list = pr_list
+        self.log.debug(str(self.pr_list))
         return self.pr_list
 
     def check_pr_exist(self, app_id):
@@ -92,37 +102,46 @@ class Pr:
                         if app_id not in self.diff_app_set:
                             self.tqdm.set_postfix(tag=tag, app_id=app_id, refresh=False)
                             self.diff_app_set.add(app_id)
+                else:
+                    self.log.debug(f'Can\'t find the branch to which the tag belongs: {tag}')
             self.tqdm.update()
 
     def pr(self):
         self.check_diff()
+        self.log.debug(str(self.diff_app_set))
         app_id_list = []
         for app_id in self.diff_app_set:
             if not self.check_pr_exist(app_id):
-                print(app_id)
+                self.log.info(f'app_id: {app_id}')
                 app_id_list.append(app_id)
+        self.log.debug(str(app_id_list))
         for app_id in app_id_list:
             url = f'https://api.github.com/repos/{self.source_owner_name}/{self.source_repo_name}/pulls'
             r = requests.post(url, headers=self.headers,
                               json={'title': str(app_id), 'head': f'{self.owner_name}:{app_id}', 'base': 'main'})
             if r.status_code == 201:
-                print(f'pr successfully: {app_id}')
-                time.sleep(30)
+                self.log.info(f'pr successfully: {app_id}')
+                time.sleep(15)
                 continue
-            print(f'pr failed: {app_id}, result: {r.text}, headers: {r.headers}')
+            self.log.info(f'pr failed: {app_id}, result: {r.text}, headers: {r.headers}')
             if r.status_code == 403 and 'x-ratelimit-reset' in r.headers:
                 t = int(r.headers['x-ratelimit-reset'])
                 now = int(time.time())
                 if now < t:
-                    print(f'Wait {t - now} second!')
-                    time.sleep(t - now)
-            time.sleep(30)
+                    count = t - now
+                    self.log.info(f'Wait {count} second!')
+                    while count:
+                        time.sleep(1)
+                        count -= 1
+                        self.log.debug(f'Wait {count} second!')
+            time.sleep(15)
 
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-r', '--repo', default='https://github.com/wxy1343/ManifestAutoUpdate')
 parser.add_argument('-t', '--token')
+parser.add_argument('-l', '--level', default='INFO')
 
 if __name__ == '__main__':
     args = parser.parse_args()
-    Pr(source_repo=args.repo, token=args.token).pr()
+    Pr(source_repo=args.repo, token=args.token, level=args.level).pr()
