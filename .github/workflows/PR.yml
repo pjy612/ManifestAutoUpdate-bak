@@ -1,5 +1,9 @@
 name: PR
 on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
   workflow_dispatch:
     inputs:
       repo:
