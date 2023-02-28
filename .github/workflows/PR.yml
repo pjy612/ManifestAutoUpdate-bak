@@ -13,9 +13,8 @@ jobs:
   pr:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v3
-        with:
-          submodules: recursive
+      - name: checkout
+        run: git clone --filter=blob:none -b ${{ github.ref_name }} --recurse-submodules https://${{ github.token }}@github.com/${{ github.repository }} .
       - name: Set up Python 3.10
         uses: actions/setup-python@v3
         with:
